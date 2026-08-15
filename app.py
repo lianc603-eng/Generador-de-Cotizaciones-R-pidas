@@ -217,7 +217,6 @@ class PDFCotizacion(FPDF):
             self.cell(0, 5, f"Contacto / Tel: {self.emisor_tel}", new_x="LMARGIN", new_y="NEXT", align="L")
         self.ln(4)
         
-        # Barra decorativa de color
         self.set_draw_color(*self.color_rgb)
         self.set_line_width(0.8 if self.estilo_plantilla == "Moderna" else 0.4)
         self.line(10, self.get_y(), 200, self.get_y())
@@ -455,7 +454,7 @@ if not st.session_state["autenticado"]:
     with tab_registro:
         with st.form("form_reg"):
             reg_empresa = st.text_input("Nombre de tu Primer Negocio / Marca Principal")
-            reg_tel = st.text_input("Teléfono de Contacto (10 dígitos)")
+            reg_tel = st.text_input("Teléfono de Contacto", placeholder="Número telefónico a 10 dígitos")
             reg_email = st.text_input("Correo Electrónico (será tu usuario)").strip().lower()
             reg_pass = st.text_input("Crear Contraseña", type="password")
             btn_reg = st.form_submit_button(f"🎁 Comenzar mis {DIAS_PRUEBA_GRATIS} Días de Prueba Gratis", use_container_width=True)
@@ -481,7 +480,6 @@ else:
     user_email = str(st.session_state["usuario_actual"]).lower().strip()
     empresa_data = st.session_state["datos_empresa"]
     
-    # Verificación de SuperAdmin para tu cuenta
     es_super_admin = (user_email == ADMIN_EMAIL.lower())
     
     plan_raw = str(empresa_data.get("plan", "Trial")).strip().upper()
@@ -604,12 +602,12 @@ else:
             st.subheader(f"🏢 Emisor: {negocio_seleccionado}")
             mi_empresa = st.text_input("Nombre de la Marca Emisora", value=negocio_seleccionado)
             tel_sug = cfg_activa.get("telefono", empresa_data.get("telefono", ""))
-            mi_telefono = st.text_input("Teléfono de Contacto del Negocio", value=str(tel_sug))
+            mi_telefono = st.text_input("Teléfono de Contacto del Negocio", value=str(tel_sug), placeholder="Número telefónico a 10 dígitos")
 
         with col_cliente:
             st.subheader("👤 Datos del Cliente")
-            cliente_nombre = st.text_input("Nombre del Cliente o Empresa", placeholder="Ej. Juan Pérez")
-            cliente_telefono = st.text_input("Teléfono del Cliente (10 dígitos)", placeholder="Ej. 9811064023")
+            cliente_nombre = st.text_input("Nombre del Cliente o Empresa", placeholder="Nombre o Razón Social")
+            cliente_telefono = st.text_input("Teléfono del Cliente", placeholder="Número telefónico a 10 dígitos")
 
         st.divider()
 
@@ -645,7 +643,7 @@ else:
             with st.form("form_serv", clear_on_submit=True):
                 col_s1, col_s2, col_s3, col_s4 = st.columns([3, 1.2, 1.2, 1])
                 with col_s1:
-                    serv_nombre = st.text_input("Nombre del Servicio", placeholder="Ej. Cobertura de Evento / Mantenimiento")
+                    serv_nombre = st.text_input("Nombre del Servicio", placeholder="Descripción del servicio")
                 with col_s2:
                     serv_unidad = st.selectbox("Unidad", ["Servicio", "Hora", "Proyecto", "Mes", "Evento", "Sesión"])
                 with col_s3:
@@ -653,7 +651,7 @@ else:
                 with col_s4:
                     serv_precio = st.number_input("Precio ($)", min_value=0.0, value=0.0, step=100.0)
                 
-                serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Entregables, revisiones o especificaciones.")
+                serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Entregables, especificaciones o detalles de trabajo.")
                 if st.form_submit_button("➕ Agregar Servicio", use_container_width=True):
                     if serv_nombre.strip():
                         st.session_state["items"].append({
@@ -667,7 +665,7 @@ else:
             with st.form("form_prod", clear_on_submit=True):
                 col_p1, col_p2, col_p3, col_p4 = st.columns([3, 1.2, 1.2, 1])
                 with col_p1:
-                    prod_nombre = st.text_input("Nombre del Producto", placeholder="Ej. Cuadro Canvas / Kit de Insumos")
+                    prod_nombre = st.text_input("Nombre del Producto", placeholder="Descripción del producto")
                 with col_p2:
                     prod_unidad = st.selectbox("Presentación", ["Pieza", "Kit", "Paquete", "Caja", "Metro", "Lote"])
                 with col_p3:
@@ -675,7 +673,7 @@ else:
                 with col_p4:
                     prod_precio = st.number_input("Precio Unitario ($)", min_value=0.0, value=0.0, step=50.0)
                 
-                prod_detalle = st.text_area("Especificaciones del producto (Opcional)", placeholder="Ej. Materiales, dimensiones o acabados.")
+                prod_detalle = st.text_area("Especificaciones del producto (Opcional)", placeholder="Materiales, dimensiones o acabados.")
                 if st.form_submit_button("➕ Agregar Producto", use_container_width=True):
                     if prod_nombre.strip():
                         st.session_state["items"].append({
@@ -833,8 +831,8 @@ else:
             else:
                 with st.form("form_nuevo_negocio", clear_on_submit=True):
                     st.write(f"Tienes **{num_actual}** marcas activas.")
-                    nuevo_neg_nombre = st.text_input("Nombre de la Nueva Empresa / Marca", placeholder="Ej. Kairós MKT / Alfa & Omega")
-                    nuevo_neg_tel = st.text_input("Teléfono de Contacto Oficial", placeholder="Ej. 9811234567")
+                    nuevo_neg_nombre = st.text_input("Nombre de la Nueva Empresa / Marca", placeholder="Nombre de la nueva marca")
+                    nuevo_neg_tel = st.text_input("Teléfono de Contacto Oficial", placeholder="Número telefónico a 10 dígitos")
                     
                     if st.form_submit_button("🚀 Crear y Registrar este Negocio", use_container_width=True):
                         if nuevo_neg_nombre.strip():
@@ -868,14 +866,14 @@ else:
             with st.form("form_nuevo_cat", clear_on_submit=True):
                 col_cat1, col_cat2, col_cat3 = st.columns([2, 1, 1])
                 with col_cat1:
-                    cat_nombre = st.text_input("Nombre del Paquete o Producto", placeholder="Ej. Paquete Fotografía Boda VIP")
+                    cat_nombre = st.text_input("Nombre del Paquete o Producto", placeholder="Nombre del paquete")
                 with col_cat2:
                     cat_tipo = st.selectbox("Categoría", ["Servicio", "Producto"])
                 with col_cat3:
                     cat_unidad = st.selectbox("Presentación / Unidad", ["Servicio", "Proyecto", "Hora", "Mes", "Pieza", "Paquete", "Kit", "Lote"])
                 
                 cat_precio = st.number_input("Precio Base Sugerido ($ MXN)", min_value=0.0, step=100.0)
-                cat_detalle = st.text_area("¿Qué incluye este paquete? (Detalle / Alcance)", placeholder="Ej. Cobertura de 8 horas, 2 fotógrafos, galería web y cuadro 60x40cm.")
+                cat_detalle = st.text_area("¿Qué incluye este paquete? (Detalle / Alcance)", placeholder="Entregables, horas de trabajo o especificaciones.")
                 
                 if st.form_submit_button(f"💾 Guardar en Catálogo de {negocio_seleccionado}", use_container_width=True):
                     if cat_nombre.strip():
@@ -915,7 +913,6 @@ else:
         with col_d1:
             st.subheader(f"1. Identidad Visual: {negocio_seleccionado}")
             
-            # Selector de Plantillas Pro
             plantilla_elegida = st.selectbox("Plantilla / Maquetación del PDF", ["Ejecutiva (Clásica)", "Moderna (Línea Gruesa)", "Minimalista"], index=0)
             st.session_state["cfg_plantilla"] = plantilla_elegida
 
@@ -947,7 +944,7 @@ else:
                 placeholder="Escribe o selecciona tu institución bancaria..."
             )
             
-            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=str(cfg_activa.get("clabe", "")), placeholder="Ej. 012180012345678901")
+            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=str(cfg_activa.get("clabe", "")), placeholder="Número de CLABE a 18 dígitos")
             titular_in = st.text_input("Nombre del Beneficiario / Titular", value=str(cfg_activa.get("titular", negocio_seleccionado)))
 
             st.write("---")
@@ -967,7 +964,7 @@ else:
                 key=f"pie_in_{negocio_seleccionado}"
             )
 
-            tel_negocio_in = st.text_input("Teléfono del Negocio", value=str(cfg_activa.get("telefono", "")))
+            tel_negocio_in = st.text_input("Teléfono del Negocio", value=str(cfg_activa.get("telefono", "")), placeholder="Número telefónico a 10 dígitos")
 
             if st.button(f"💾 Guardar Ajustes para {negocio_seleccionado}", use_container_width=True, type="primary"):
                 ok = guardar_config_negocio_api(
@@ -986,7 +983,7 @@ else:
                 col_hdr1, col_hdr2 = st.columns([3, 1])
                 with col_hdr1:
                     st.markdown(f"<h3 style='color:{color_seleccionado}; margin-bottom:0;'>{negocio_seleccionado.upper()}</h3>", unsafe_allow_html=True)
-                    st.caption(f"Contacto: {tel_negocio_in or '9811234567'}")
+                    st.caption(f"Contacto: {tel_negocio_in or 'Contacto no registrado'}")
                 with col_hdr2:
                     st.markdown(f"<div style='text-align:right; font-weight:bold; color:{color_seleccionado}; border:1px solid #cbd5e1; padding:4px 8px; border-radius:4px; font-size:12px;'>COTIZACIÓN</div>", unsafe_allow_html=True)
                 
@@ -996,7 +993,7 @@ else:
                 col_c_info1, col_c_info2 = st.columns(2)
                 with col_c_info1:
                     st.markdown("**CLIENTE:** Ejemplo de Cliente S.A.")
-                    st.caption("Tel: 9811000000")
+                    st.caption("Tel: Contacto del cliente")
                 with col_c_info2:
                     st.markdown(f"**Fecha:** {datetime.date.today().strftime('%d/%m/%Y')}")
                     st.caption("Vigencia: 7 días")
@@ -1027,7 +1024,6 @@ else:
 
         with tab_crm_marca:
             if not df_mis_cotizaciones_negocio.empty:
-                # Conversión numérica de Totales
                 totales_num = pd.to_numeric(df_mis_cotizaciones_negocio['Total'], errors='coerce').fillna(0)
                 subtotales_num = pd.to_numeric(df_mis_cotizaciones_negocio['Subtotal'], errors='coerce').fillna(0) if 'Subtotal' in df_mis_cotizaciones_negocio.columns else totales_num
                 
@@ -1120,8 +1116,8 @@ else:
 
         with col_v1:
             st.subheader("1. Datos del Prospecto")
-            dest_nombre = st.text_input("Nombre del Contacto / Dueño de Negocio", placeholder="Ej. Carlos / Lic. Ana")
-            dest_tel = st.text_input("Número de WhatsApp (10 dígitos)", placeholder="Ej. 9811234567")
+            dest_nombre = st.text_input("Nombre del Contacto / Dueño de Negocio", placeholder="Nombre del prospecto")
+            dest_tel = st.text_input("Número de WhatsApp", placeholder="Número telefónico a 10 dígitos")
             
             st.write("---")
             st.subheader("2. Estilo de Mensaje")
