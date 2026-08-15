@@ -248,7 +248,7 @@ def hex_a_rgb(hex_str):
         return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
     return (30, 41, 59)
 
-def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, descuento_monto, iva_monto, total, vigencia, notas, es_pro=False, logo_path=None, color_hex="#831843", pie_custom="", logo_align="Izquierda", datos_banco="", qr_path=None, firma_path=None, plantilla="Ejecutiva"):
+def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, descuento_monto, iva_monto, total, vigencia, notas, es_pro=False, logo_path=None, color_hex="#831843", pie_custom="", logo_align="Izquierda", datos_banco="", qr_path=None, firma_path=None, plantilla="Ejecutiva", etiqueta_iva=""):
     color_rgb = hex_a_rgb(color_hex)
     pdf = PDFCotizacion(empresa, emisor_tel, es_pro, logo_path, color_rgb, pie_custom, logo_align, datos_banco, firma_path, plantilla)
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -320,16 +320,22 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
     pdf.set_font("Helvetica", "", 8.5)
     pdf.set_text_color(71, 85, 105)
     
-    if descuento_monto > 0 or iva_monto > 0:
+    if descuento_monto > 0 or "IVA" in etiqueta_iva:
         pdf.cell(160, 5, "Subtotal: ", border=0, align="R")
         pdf.cell(30, 5, f"${subtotal:,.2f}", border=0, align="R")
         pdf.ln()
+        
         if descuento_monto > 0:
             pdf.cell(160, 5, "Descuento Comercial: ", border=0, align="R")
             pdf.cell(30, 5, f"-${descuento_monto:,.2f}", border=0, align="R")
             pdf.ln()
-        if iva_monto > 0:
-            pdf.cell(160, 5, "I.V.A.: ", border=0, align="R")
+            
+        if "IVA Incluido" in etiqueta_iva:
+            pdf.cell(160, 5, "I.V.A. Trasladado 16% (Incluido): ", border=0, align="R")
+            pdf.cell(30, 5, f"${iva_monto:,.2f}", border=0, align="R")
+            pdf.ln()
+        elif iva_monto > 0:
+            pdf.cell(160, 5, f"I.V.A. ({etiqueta_iva}): ", border=0, align="R")
             pdf.cell(30, 5, f"+${iva_monto:,.2f}", border=0, align="R")
             pdf.ln()
 
@@ -703,6 +709,7 @@ else:
             
             subtotal_bruto = float(df_items["Importe"].sum())
 
+            # Calculadora de Descuentos e IVA con soporte de IVA INCLUIDO
             col_calc1, col_calc2, col_calc3 = st.columns(3)
             with col_calc1:
                 st.metric("Subtotal de Conceptos", f"${subtotal_bruto:,.2f} MXN")
@@ -710,13 +717,38 @@ else:
                 porcentaje_desc = st.number_input("Descuento Comercial (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0)
                 monto_descuento = subtotal_bruto * (porcentaje_desc / 100.0)
             with col_calc3:
-                tipo_iva = st.selectbox("Aplicar Impuesto (I.V.A.)", ["0% (Sin IVA)", "16% (IVA General)", "8% (Frontera)"])
-                tasa_iva = 0.16 if "16%" in tipo_iva else (0.08 if "8%" in tipo_iva else 0.0)
+                tipo_iva = st.selectbox(
+                    "Aplicar Impuesto (I.V.A.)", 
+                    [
+                        "0% (Sin IVA / Precios Netos)",
+                        "IVA Incluido (Precios ya tienen IVA 16%)", 
+                        "16% (Agregar IVA General)", 
+                        "8% (Agregar IVA Frontera)"
+                    ]
+                )
+                
                 base_con_descuento = subtotal_bruto - monto_descuento
-                monto_iva = base_con_descuento * tasa_iva
+                
+                if "IVA Incluido" in tipo_iva:
+                    # El total ya contiene el IVA
+                    total_final = base_con_descuento
+                    base_gravable = total_final / 1.16
+                    monto_iva = total_final - base_gravable
+                    etiqueta_iva_wa = "IVA Incluido"
+                elif "16%" in tipo_iva:
+                    monto_iva = base_con_descuento * 0.16
+                    total_final = base_con_descuento + monto_iva
+                    etiqueta_iva_wa = "+ 16% IVA"
+                elif "8%" in tipo_iva:
+                    monto_iva = base_con_descuento * 0.08
+                    total_final = base_con_descuento + monto_iva
+                    etiqueta_iva_wa = "+ 8% IVA"
+                else:
+                    monto_iva = 0.0
+                    total_final = base_con_descuento
+                    etiqueta_iva_wa = "Precios sin IVA"
 
-            total_final = base_con_descuento + monto_iva
-            st.success(f"### 💰 **TOTAL FINAL A COBRAR: ${total_final:,.2f} MXN**")
+            st.success(f"### 💰 **TOTAL FINAL A COBRAR: ${total_final:,.2f} MXN ({etiqueta_iva_wa})**")
 
             if st.button("🗑️ Limpiar lista de cotización"):
                 st.session_state["items"] = []
@@ -724,6 +756,7 @@ else:
         else:
             df_items = pd.DataFrame(columns=COLUMNAS_BASE)
             subtotal_bruto, monto_descuento, monto_iva, total_final = 0.0, 0.0, 0.0, 0.0
+            etiqueta_iva_wa = "Precios sin IVA"
             st.info("Aún no has agregado servicios o productos a la cotización.")
 
         st.divider()
@@ -757,7 +790,8 @@ else:
                     df_items, subtotal_bruto, monto_descuento, monto_iva, total_final, vigencia_dias, notas_adicionales,
                     es_pro=es_pro, logo_path=cfg_logo_path,
                     color_hex=cfg_color, pie_custom=cfg_pie, logo_align=cfg_align,
-                    datos_banco=texto_bancario, qr_path=path_qr_pago, firma_path=cfg_firma_path, plantilla=plantilla_sel
+                    datos_banco=texto_bancario, qr_path=path_qr_pago, firma_path=cfg_firma_path, plantilla=plantilla_sel,
+                    etiqueta_iva=etiqueta_iva_wa
                 )
                 
                 st.download_button(
@@ -768,18 +802,24 @@ else:
                     use_container_width=True
                 )
 
+                # Resumen de WhatsApp estructurado con especificación de IVA
                 resumen_lineas = [f"• *{it['Concepto']}* ({it['Cantidad']:.0f} {it['Tipo']}) -> ${it['Importe']:,.2f}" for _, it in df_items.iterrows()]
+                
+                # Desglose de impuesto para el mensaje
+                info_impuesto_msg = f" ({etiqueta_iva_wa})"
+                
                 mensaje_wa = (
                     f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{mi_empresa or negocio_seleccionado}*:\n\n"
                     f"{chr(10).join(resumen_lineas)}\n\n"
-                    f"💰 *TOTAL:* ${total_final:,.2f} MXN\n⏳ *Vigencia:* {vigencia_dias} días.\n\n"
+                    f"💰 *TOTAL:* ${total_final:,.2f} MXN{info_impuesto_msg}\n"
+                    f"⏳ *Vigencia:* {vigencia_dias} días.\n\n"
                     f"Quedo a tu disposición si deseas confirmar o realizar algún ajuste."
                 )
                 tel_formateado = "".join(filter(str.isdigit, cliente_telefono))
                 wa_url = f"https://wa.me/{tel_formateado}?text={urllib.parse.quote(mensaje_wa)}"
                 st.link_button("📲 Enviar Resumen por WhatsApp", wa_url, use_container_width=True)
 
-                cal_desc = f"Seguimiento de cotización enviada por ${total_final:,.2f} MXN. Tel: {cliente_telefono} ({negocio_seleccionado})"
+                cal_desc = f"Seguimiento de cotización enviada por ${total_final:,.2f} MXN ({etiqueta_iva_wa}). Tel: {cliente_telefono} ({negocio_seleccionado})"
                 cal_url = link_google_calendar(f"Llamar a {cliente_nombre} - {negocio_seleccionado}", cal_desc, fecha_seg)
                 st.link_button("📅 Agendar en Google Calendar", cal_url, use_container_width=True)
 
@@ -800,7 +840,7 @@ else:
                         "Vigencia_Dias": vigencia_dias,
                         "Fecha_Seguimiento": fecha_seg.strftime("%Y-%m-%d"),
                         "Estatus": "Pendiente",
-                        "Notas": notas_adicionales.strip()
+                        "Notas": f"{notas_adicionales.strip()} | Impuesto: {etiqueta_iva_wa}"
                     }
                     guardado = guardar_cotizacion_api(datos_a_guardar)
                     if guardado:
@@ -1190,7 +1230,7 @@ else:
             - **Catálogo Ilimitado** aislado por cada negocio
             - **Hoja Membretada con Colores y Logotipo oficial** por marca
             - **Cuentas Bancarias + QR SPEI de pago directo** independientes
-            - **Calculadora de IVA y Descuentos comerciales**
+            - **Calculadora de IVA (Incluido o Desglosado) y Descuentos**
             - **Firma digital / Sello escaneado**
             - **Pipeline CRM, ganancias netas y reportes en Excel**
             - **Sin marcas de agua**
