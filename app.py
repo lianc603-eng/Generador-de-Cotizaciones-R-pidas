@@ -21,7 +21,6 @@ DIAS_PRUEBA_GRATIS = 3
 
 # --- Catálogo Oficial de Bancos / SPEI en México ---
 LISTA_BANCOS_MX = [
-    "-- Seleccionar Banco / Institución --",
     "ACTINVER", "AFIRME", "albo", "ARCUS FI", "ASP INTEGRA OPC", "AZTECA", "BaBien", 
     "BAJIO", "BANAMEX", "BANCO COVALTO", "BANCOMEXT", "BANCOPPEL", "BANCO S3", 
     "BANCREA", "BANJERCITO", "BANKAOOL", "BANK OF AMERICA", "BANK OF CHINA", 
@@ -250,7 +249,7 @@ def sanitizar_texto(texto):
     return str(texto).encode("latin-1", "replace").decode("latin-1")
 
 def hex_a_rgb(hex_str):
-    hex_str = hex_str.lstrip("#")
+    hex_str = str(hex_str).lstrip("#")
     if len(hex_str) == 6:
         return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
     return (30, 41, 59)
@@ -261,7 +260,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Encabezado Cliente
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(*color_rgb)
     pdf.cell(110, 6, sanitizar_texto(f"CLIENTE: {cliente}"))
@@ -274,7 +272,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
     pdf.cell(80, 5, f"Válido por: {vigencia} días", new_x="LMARGIN", new_y="NEXT", align="R")
     pdf.ln(5)
 
-    # Cabecera de Tabla
     pdf.set_fill_color(241, 245, 249)
     pdf.set_draw_color(203, 213, 225)
     pdf.set_text_color(*color_rgb)
@@ -285,7 +282,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
     pdf.cell(30, 7, "Subtotal", border=1, align="R", fill=True)
     pdf.ln()
 
-    # Filas
     for _, row in items_df.iterrows():
         concepto = sanitizar_texto(str(row["Concepto"]))
         tipo_unidad = sanitizar_texto(f"{row['Tipo']} ({row['Cantidad']:.2f})")
@@ -324,7 +320,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
             pdf.cell(30, 1, "", border="LBR")
             pdf.ln()
 
-    # Totales Desglosados
     pdf.set_font("Helvetica", "", 8.5)
     pdf.set_text_color(71, 85, 105)
     
@@ -350,7 +345,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
     pdf.cell(30, 8, f"${total:,.2f}", border=1, align="R", fill=True)
     pdf.ln(7)
 
-    # Notas / Condiciones
     if notas:
         pdf.set_font("Helvetica", "B", 8.5)
         pdf.cell(0, 4, "Notas y Condiciones de Entrega:", new_x="LMARGIN", new_y="NEXT")
@@ -359,14 +353,12 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
         pdf.multi_cell(0, 3.8, sanitizar_texto(str(notas)))
         pdf.ln(4)
 
-    # Bloque Pro: Datos de Pago Bancario + QR + Firma
     if es_pro and (datos_banco or firma_path):
         y_bloque = pdf.get_y()
         if y_bloque > 230:
             pdf.add_page()
             y_bloque = pdf.get_y()
 
-        # Datos Bancarios & QR
         if datos_banco:
             pdf.set_fill_color(248, 250, 252)
             pdf.set_draw_color(226, 232, 240)
@@ -388,7 +380,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
                 except Exception:
                     pass
 
-        # Firma Escaneada
         if firma_path and os.path.exists(firma_path):
             try:
                 pdf.image(firma_path, x=150, y=y_bloque + 1, w=35)
@@ -715,7 +706,7 @@ else:
         with col_actions:
             st.subheader("🚀 Acciones Rápidas")
             if not df_items.empty and cliente_nombre and cliente_nombre.strip():
-                cfg_color = st.session_state.get("cfg_color", "#1e293b")
+                cfg_color = st.session_state.get("cfg_color", "#831843")
                 cfg_pie = st.session_state.get("cfg_pie", "")
                 cfg_align = st.session_state.get("cfg_align", "Izquierda")
                 cfg_logo_path = st.session_state.get("cfg_logo_path", None)
@@ -724,7 +715,7 @@ else:
                 cfg_titular = st.session_state.get("cfg_titular", "")
                 cfg_firma_path = st.session_state.get("cfg_firma_path", None)
 
-                texto_bancario = f"Banco: {cfg_banco}\nCLABE: {cfg_clabe}\nBeneficiario: {cfg_titular}" if (cfg_clabe and cfg_banco and cfg_banco != "-- Seleccionar Banco / Institución --") else ""
+                texto_bancario = f"Banco: {cfg_banco}\nCLABE: {cfg_clabe}\nBeneficiario: {cfg_titular}" if (cfg_clabe and cfg_banco) else ""
                 path_qr_pago = generar_qr_spei(cfg_clabe, cfg_titular) if (es_pro and cfg_clabe) else None
 
                 pdf_bytes = generar_pdf(
@@ -838,7 +829,7 @@ else:
             else:
                 st.info("Aún no has registrado productos ni servicios en tu catálogo. Guarda tu primer paquete en la pestaña contigua.")
 
-    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA CON VISTA PREVIA LIMPIA ---
+    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA (100% PERSONALIZADO PRO) ---
     elif menu == "🎨 Diseñar Hoja Membretada":
         st.title("🎨 Personaliza tu Hoja Membretada, Cobro y Firma")
         st.caption(f"Disponible en Plan Pro y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
@@ -850,16 +841,10 @@ else:
 
         with col_d1:
             st.subheader("1. Identidad de Marca y Logo")
-            paletas = {
-                "Azul Ejecutivo": "#1e3a8a",
-                "Verde Esmeralda / Bosque": "#065f46",
-                "Vino / Borgoña": "#831843",
-                "Gris Grafito / Carbón": "#1e293b",
-                "Dorado Elegante": "#b45309",
-                "Personalizado": "#1e293b"
-            }
-            eleccion_paleta = st.selectbox("Color Principal", list(paletas.keys()))
-            color_seleccionado = st.color_picker("Color hexadecimal", value="#831843") if eleccion_paleta == "Personalizado" else paletas[eleccion_paleta]
+            
+            # Selector de Color 100% Libre y Personalizado
+            color_actual = st.session_state.get("cfg_color", "#831843")
+            color_seleccionado = st.color_picker("Elige el Color Principal de tu Marca (100% Personalizado)", value=color_actual)
             st.session_state["cfg_color"] = color_seleccionado
 
             logo_subido = st.file_uploader("Subir Logo de Empresa (PNG/JPG)", type=["png", "jpg", "jpeg"])
@@ -876,9 +861,16 @@ else:
             st.write("---")
             st.subheader("2. Datos de Cobro Bancario (SPEI y QR)")
             
-            banco_actual = st.session_state.get("cfg_banco", "-- Seleccionar Banco / Institución --")
-            idx_banco = LISTA_BANCOS_MX.index(banco_actual) if banco_actual in LISTA_BANCOS_MX else 0
-            banco_in = st.selectbox("Banco Receptor (Escribe para buscar tu institución)", LISTA_BANCOS_MX, index=idx_banco)
+            # Selector de Bancos no editable con buscador integrado
+            banco_guardado = st.session_state.get("cfg_banco", None)
+            idx_banco = LISTA_BANCOS_MX.index(banco_guardado) if (banco_guardado in LISTA_BANCOS_MX) else None
+            
+            banco_in = st.selectbox(
+                "Banco Receptor (Escribe para buscar tu institución)", 
+                LISTA_BANCOS_MX, 
+                index=idx_banco,
+                placeholder="Escribe o selecciona tu institución bancaria..."
+            )
             
             clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=st.session_state.get("cfg_clabe", ""), placeholder="Ej. 012180012345678901")
             titular_in = st.text_input("Nombre del Beneficiario / Titular", value=st.session_state.get("cfg_titular", empresa_data.get('nombre', '')))
@@ -909,9 +901,7 @@ else:
             st.subheader("👁️ Vista Previa de tu Hoja Membretada")
             st.caption("Simulación visual de cómo se estructurará tu PDF oficial.")
 
-            # Contenedor con borde nativo
             with st.container(border=True):
-                # Encabezado Membretado
                 col_hdr1, col_hdr2 = st.columns([3, 1])
                 with col_hdr1:
                     st.markdown(f"<h3 style='color:{color_seleccionado}; margin-bottom:0;'>{empresa_data.get('nombre', 'MI EMPRESA').upper()}</h3>", unsafe_allow_html=True)
@@ -921,7 +911,6 @@ else:
                 
                 st.markdown(f"<div style='height:3px; background-color:{color_seleccionado}; margin-top:5px; margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
-                # Datos del Cliente
                 col_c_info1, col_c_info2 = st.columns(2)
                 with col_c_info1:
                     st.markdown("**CLIENTE:** Ejemplo de Cliente S.A.")
@@ -932,25 +921,21 @@ else:
 
                 st.write("")
                 
-                # Tabla Demo
                 df_demo = pd.DataFrame([
                     {"Descripción": "Servicio de Cobertura / Producción", "Cant.": "1.00", "P. Unitario": "$3,500.00", "Subtotal": "$3,500.00"},
                     {"Descripción": "Impresión en Cuadro Fotográfico Canvas", "Cant.": "2.00", "P. Unitario": "$600.00", "Subtotal": "$1,200.00"}
                 ])
                 st.dataframe(df_demo, use_container_width=True, hide_index=True)
 
-                # Total
                 st.markdown(f"<div style='text-align:right; font-size:16px; font-weight:bold; color:{color_seleccionado}; margin-top:8px;'>TOTAL A LIQUIDAR: $4,700.00 MXN</div>", unsafe_allow_html=True)
 
-                # Cuadro de Pago SPEI si hay datos
-                if banco_in and banco_in != "-- Seleccionar Banco / Institución --" and clabe_in:
+                if banco_in and clabe_in:
                     st.write("")
                     with st.container(border=True):
                         st.markdown(f"<div style='font-size:11px; font-weight:bold; color:{color_seleccionado};'>INFORMACIÓN PARA PAGO / SPEI</div>", unsafe_allow_html=True)
                         st.markdown(f"**Banco:** {banco_in}  \n**CLABE:** `{clabe_in}`  \n**Beneficiario:** {titular_in}")
 
                 st.write("---")
-                # Pie de Página
                 st.markdown(f"<div style='text-align:center; font-size:11px; color:#94a3b8;'>{pie_texto}</div>", unsafe_allow_html=True)
 
         st.success("✅ Todos los ajustes de diseño y cobro han sido guardados para tus próximas cotizaciones.")
@@ -995,7 +980,6 @@ else:
             cols_crm = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
             st.dataframe(df_mis_cotizaciones[cols_crm], use_container_width=True, hide_index=True)
 
-            # Exportación a CSV / Excel
             csv_data = df_mis_cotizaciones.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📥 Exportar Historial a Excel (CSV)",
@@ -1025,7 +1009,7 @@ else:
             ### ⭐ Plan Pro ($149 MXN / mes)
             - **Cotizaciones Ilimitadas**
             - **Catálogo Ilimitado** para cotizar en 1 clic
-            - **Hoja Membretada con Colores y Logotipo oficial**
+            - **Hoja Membretada con Colores 100% Personalizados y Logotipo**
             - **Datos Bancarios + QR SPEI de pago** directo
             - **Firma digital / Sello escaneado**
             - **Calculadora de IVA y Descuentos comerciales**
