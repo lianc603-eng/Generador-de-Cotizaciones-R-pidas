@@ -18,8 +18,8 @@ st.set_page_config(page_title="Cotizador PyME Pro", page_icon="🏢", layout="wi
 COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]
 LIMITE_FREE_MENSUAL = 3
 DIAS_PRUEBA_GRATIS = 3
+MAX_NEGOCIOS_PRO = 3  # <-- Límite de hasta 3 negocios
 
-# --- Catálogo Oficial de Bancos / SPEI en México ---
 LISTA_BANCOS_MX = [
     "ACTINVER", "AFIRME", "albo", "ARCUS FI", "ASP INTEGRA OPC", "AZTECA", "BaBien", 
     "BAJIO", "BANAMEX", "BANCO COVALTO", "BANCOMEXT", "BANCOPPEL", "BANCO S3", 
@@ -54,6 +54,55 @@ def obtener_usuarios():
     except Exception:
         return pd.DataFrame(columns=["email", "password", "nombre_empresa", "telefono", "plan", "fecha_registro"])
 
+def obtener_negocios_usuario(user_email):
+    try:
+        res = requests.get(f"{API_URL}?action=get_negocios", timeout=15, allow_redirects=True)
+        data = res.json()
+        if isinstance(data, list) and len(data) > 1:
+            headers = [str(h).strip() for h in data[0]]
+            df = pd.DataFrame(data[1:], columns=headers)
+            if "id_usuario" in df.columns:
+                return df[df["id_usuario"].str.lower() == user_email.lower()]
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+def agregar_nuevo_negocio_api(id_usuario, nombre_negocio, telefono):
+    try:
+        payload = {
+            "action": "add_negocio",
+            "id_usuario": id_usuario,
+            "nombre_negocio": nombre_negocio,
+            "telefono": telefono,
+            "color": "#831843",
+            "banco": "",
+            "clabe": "",
+            "titular": nombre_negocio,
+            "pie_pdf": "Gracias por su preferencia."
+        }
+        res = requests.post(API_URL, data=json.dumps(payload), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
+        return "success" in res.text
+    except Exception:
+        return False
+
+def guardar_config_negocio_api(id_usuario, nombre_negocio, telefono, color, banco, clabe, titular, pie_pdf):
+    try:
+        payload = {
+            "action": "update_negocio_config",
+            "id_usuario": id_usuario,
+            "nombre_negocio": nombre_negocio,
+            "telefono": telefono,
+            "color": color,
+            "banco": banco,
+            "clabe": clabe,
+            "titular": titular,
+            "pie_pdf": pie_pdf
+        }
+        res = requests.post(API_URL, data=json.dumps(payload), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
+        return "success" in res.text
+    except Exception:
+        return False
+
 def registrar_usuario_api(email, password_hashed, nombre_empresa, telefono):
     try:
         payload = {
@@ -65,13 +114,7 @@ def registrar_usuario_api(email, password_hashed, nombre_empresa, telefono):
             "plan": "Trial",
             "fecha_registro": datetime.date.today().strftime("%Y-%m-%d")
         }
-        res = requests.post(
-            API_URL, 
-            data=json.dumps(payload), 
-            headers={"Content-Type": "text/plain;charset=utf-8"}, 
-            timeout=15, 
-            allow_redirects=True
-        )
+        res = requests.post(API_URL, data=json.dumps(payload), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
         return "success" in res.text
     except Exception:
         return False
@@ -90,13 +133,7 @@ def obtener_cotizaciones():
 def guardar_cotizacion_api(data_dict):
     try:
         data_dict["action"] = "save_cotizacion"
-        res = requests.post(
-            API_URL, 
-            data=json.dumps(data_dict), 
-            headers={"Content-Type": "text/plain;charset=utf-8"}, 
-            timeout=15, 
-            allow_redirects=True
-        )
+        res = requests.post(API_URL, data=json.dumps(data_dict), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
         return "success" in res.text
     except Exception:
         return False
@@ -109,13 +146,7 @@ def actualizar_estatus_api(folio, id_empresa, nuevo_estatus):
             "id_empresa": id_empresa,
             "nuevo_estatus": nuevo_estatus
         }
-        res = requests.post(
-            API_URL, 
-            data=json.dumps(payload), 
-            headers={"Content-Type": "text/plain;charset=utf-8"}, 
-            timeout=15, 
-            allow_redirects=True
-        )
+        res = requests.post(API_URL, data=json.dumps(payload), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
         return "success" in res.text
     except Exception:
         return False
@@ -127,55 +158,46 @@ def obtener_catalogo_api():
         if isinstance(data, list) and len(data) > 1:
             headers = [str(h).strip() for h in data[0]]
             return pd.DataFrame(data[1:], columns=headers)
-        return pd.DataFrame(columns=["id_empresa", "Tipo", "Nombre", "Unidad", "Precio", "Detalle"])
+        return pd.DataFrame(columns=["id_empresa", "id_negocio", "Tipo", "Nombre", "Unidad", "Precio", "Detalle"])
     except Exception:
-        return pd.DataFrame(columns=["id_empresa", "Tipo", "Nombre", "Unidad", "Precio", "Detalle"])
+        return pd.DataFrame(columns=["id_empresa", "id_negocio", "Tipo", "Nombre", "Unidad", "Precio", "Detalle"])
 
-def guardar_item_catalogo_api(id_empresa, tipo, nombre, unidad, precio, detalle):
+def guardar_item_catalogo_api(id_empresa, id_negocio, tipo, nombre, unidad, precio, detalle):
     try:
         payload = {
             "action": "save_item_catalogo",
             "id_empresa": id_empresa,
+            "id_negocio": id_negocio,
             "Tipo": tipo,
             "Nombre": nombre,
             "Unidad": unidad,
             "Precio": precio,
             "Detalle": detalle
         }
-        res = requests.post(
-            API_URL, 
-            data=json.dumps(payload), 
-            headers={"Content-Type": "text/plain;charset=utf-8"}, 
-            timeout=15, 
-            allow_redirects=True
-        )
+        res = requests.post(API_URL, data=json.dumps(payload), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
         return "success" in res.text
     except Exception:
         return False
 
-def eliminar_item_catalogo_api(id_empresa, nombre):
+def eliminar_item_catalogo_api(id_empresa, id_negocio, nombre):
     try:
         payload = {
             "action": "delete_item_catalogo",
             "id_empresa": id_empresa,
+            "id_negocio": id_negocio,
             "nombre": nombre
         }
-        res = requests.post(
-            API_URL, 
-            data=json.dumps(payload), 
-            headers={"Content-Type": "text/plain;charset=utf-8"}, 
-            timeout=15, 
-            allow_redirects=True
-        )
+        res = requests.post(API_URL, data=json.dumps(payload), headers={"Content-Type": "text/plain;charset=utf-8"}, timeout=15, allow_redirects=True)
         return "success" in res.text
     except Exception:
         return False
 
-# --- Inicialización del Estado de Sesión ---
+# --- Inicialización de Estado ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario_actual"] = None
     st.session_state["datos_empresa"] = {}
+    st.session_state["negocio_activo"] = None
 
 if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
     st.session_state["items"] = []
@@ -254,7 +276,7 @@ def hex_a_rgb(hex_str):
         return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
     return (30, 41, 59)
 
-def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, descuento_monto, iva_monto, total, vigencia, notas, es_pro=False, logo_path=None, color_hex="#1e293b", pie_custom="", logo_align="Izquierda", datos_banco="", qr_path=None, firma_path=None):
+def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, descuento_monto, iva_monto, total, vigencia, notas, es_pro=False, logo_path=None, color_hex="#831843", pie_custom="", logo_align="Izquierda", datos_banco="", qr_path=None, firma_path=None):
     color_rgb = hex_a_rgb(color_hex)
     pdf = PDFCotizacion(empresa, emisor_tel, es_pro, logo_path, color_rgb, pie_custom, logo_align, datos_banco, firma_path)
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -327,12 +349,10 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, d
         pdf.cell(160, 5, "Subtotal: ", border=0, align="R")
         pdf.cell(30, 5, f"${subtotal:,.2f}", border=0, align="R")
         pdf.ln()
-        
         if descuento_monto > 0:
             pdf.cell(160, 5, "Descuento Comercial: ", border=0, align="R")
             pdf.cell(30, 5, f"-${descuento_monto:,.2f}", border=0, align="R")
             pdf.ln()
-            
         if iva_monto > 0:
             pdf.cell(160, 5, "I.V.A.: ", border=0, align="R")
             pdf.cell(30, 5, f"+${iva_monto:,.2f}", border=0, align="R")
@@ -420,9 +440,9 @@ def generar_qr_spei(clabe, titular):
 # ==============================================================================
 if not st.session_state["autenticado"]:
     st.title("🔒 Portal de Cotizaciones PyME")
-    st.caption(f"Inicia sesión o crea tu cuenta para disfrutar de **{DIAS_PRUEBA_GRATIS} días de prueba gratis Pro**.")
+    st.caption(f"Inicia sesión o crea tu cuenta para disfrutar de **{DIAS_PRUEBA_GRATIS} días de prueba gratis Pro con hasta {MAX_NEGOCIOS_PRO} negocios**.")
 
-    tab_login, tab_registro = st.tabs(["🔑 Iniciar Sesión", f"🎁 Registrar mi Negocio ({DIAS_PRUEBA_GRATIS} Días Gratis)"])
+    tab_login, tab_registro = st.tabs(["🔑 Iniciar Sesión", f"🎁 Registrar mi Cuenta ({DIAS_PRUEBA_GRATIS} Días Gratis)"])
 
     with tab_login:
         with st.form("form_login"):
@@ -458,7 +478,7 @@ if not st.session_state["autenticado"]:
 
     with tab_registro:
         with st.form("form_reg"):
-            reg_empresa = st.text_input("Nombre de tu Negocio / Marca")
+            reg_empresa = st.text_input("Nombre de tu Primer Negocio / Marca Principal")
             reg_tel = st.text_input("Teléfono de Contacto (10 dígitos)")
             reg_email = st.text_input("Correo Electrónico (será tu usuario)").strip().lower()
             reg_pass = st.text_input("Crear Contraseña", type="password")
@@ -474,7 +494,7 @@ if not st.session_state["autenticado"]:
                     else:
                         ok = registrar_usuario_api(reg_email, hash_password(reg_pass), reg_empresa.strip(), reg_tel.strip())
                         if ok:
-                            st.success(f"¡Negocio registrado con éxito con tu Prueba Pro de {DIAS_PRUEBA_GRATIS} días! Ya puedes iniciar sesión.")
+                            st.success(f"¡Cuenta registrada con éxito con Prueba Pro de {DIAS_PRUEBA_GRATIS} días! Inicia sesión.")
                         else:
                             st.error("Hubo un error al registrar en la base de datos.")
 
@@ -499,52 +519,49 @@ else:
     es_pro = False
     estado_plan_texto = ""
 
-    if plan_raw == "PRO":
+    if plan_raw in ["PRO", "MULTI", "PRO_MULTI"]:
         es_pro = True
-        estado_plan_texto = "⭐ Plan PRO (Ilimitado)"
+        estado_plan_texto = f"⭐ Plan PRO Activo (Hasta {MAX_NEGOCIOS_PRO} Negocios)"
     elif plan_raw == "TRIAL" and dias_restantes_trial > 0:
         es_pro = True
         estado_plan_texto = f"🎁 Prueba Pro ({dias_restantes_trial} días restantes)"
     else:
         es_pro = False
-        estado_plan_texto = "🏷️ Plan FREE"
+        estado_plan_texto = "🏷️ Plan FREE (1 Negocio)"
 
-    # Consumo del mes
-    df_todas = obtener_cotizaciones()
-    df_mis_cotizaciones = pd.DataFrame()
-    cotizaciones_mes_actual = 0
-    mes_actual_str = datetime.date.today().strftime("%Y-%m")
-
-    if not df_todas.empty and "id_empresa" in df_todas.columns:
-        df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
-        if not df_mis_cotizaciones.empty and "Fecha" in df_mis_cotizaciones.columns:
-            cotizaciones_mes_actual = len(df_mis_cotizaciones[df_mis_cotizaciones["Fecha"].astype(str).str.startswith(mes_actual_str)])
-
-    # Catálogo del usuario
-    df_catalogo_todos = obtener_catalogo_api()
-    df_mi_catalogo = pd.DataFrame()
-    if not df_catalogo_todos.empty and "id_empresa" in df_catalogo_todos.columns:
-        df_mi_catalogo = df_catalogo_todos[df_catalogo_todos["id_empresa"].str.lower() == user_email.lower()]
+    # Cargar lista de negocios del usuario
+    df_mis_negocios = obtener_negocios_usuario(user_email)
+    
+    if df_mis_negocios.empty:
+        nombres_negocios = [empresa_data.get("nombre", "Mi Negocio")]
+    else:
+        nombres_negocios = df_mis_negocios["nombre_negocio"].tolist()
 
     # Barra lateral
     with st.sidebar:
-        st.markdown(f"### 🏢 **{empresa_data.get('nombre', 'Mi Empresa')}**")
-        st.caption(f"👤 Usuario: {user_email}")
+        st.markdown("### 🏢 **Selector de Empresa**")
+        negocio_seleccionado = st.selectbox("Trabajando actualmente en:", nombres_negocios, key="sb_negocio_activo")
+        st.session_state["negocio_activo"] = negocio_seleccionado
+
+        cfg_activa = {}
+        if not df_mis_negocios.empty and negocio_seleccionado in df_mis_negocios["nombre_negocio"].values:
+            cfg_activa = df_mis_negocios[df_mis_negocios["nombre_negocio"] == negocio_seleccionado].iloc[0].to_dict()
+
+        st.caption(f"👤 Cuenta: {user_email}")
         
         if es_pro:
             st.success(f"**{estado_plan_texto}**")
         else:
-            st.info(f"**{estado_plan_texto}** ({cotizaciones_mes_actual} / {LIMITE_FREE_MENSUAL} este mes)")
-            if cotizaciones_mes_actual >= LIMITE_FREE_MENSUAL:
-                st.warning("⚠️ Límite mensual alcanzado")
+            st.info(f"**{estado_plan_texto}**")
             
         st.divider()
         menu = st.radio("Secciones", [
             "📝 Nueva Cotización", 
-            "📦 Mi Catálogo Ilimitado",
+            "🏢 Mis Negocios (Hasta 3)",
+            "📦 Mi Catálogo por Marca",
             "🎨 Diseñar Hoja Membretada", 
             "📊 Mis Cotizaciones & CRM", 
-            "⭐ Plan Pro"
+            "⭐ Planes y Precios"
         ])
         st.divider()
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
@@ -554,20 +571,49 @@ else:
             st.session_state["items"] = []
             st.rerun()
 
+    # Datos filtrados del negocio activo
+    df_todas = obtener_cotizaciones()
+    df_mis_cotizaciones = pd.DataFrame()
+    cotizaciones_mes_actual = 0
+    mes_actual_str = datetime.date.today().strftime("%Y-%m")
+
+    if not df_todas.empty and "id_empresa" in df_todas.columns:
+        filtro_usuario = df_todas["id_empresa"].str.lower() == user_email.lower()
+        if "id_negocio" in df_todas.columns:
+            filtro_negocio = df_todas["id_negocio"].astype(str) == str(negocio_seleccionado)
+            df_mis_cotizaciones = df_todas[filtro_usuario & filtro_negocio]
+        else:
+            df_mis_cotizaciones = df_todas[filtro_usuario]
+
+        if not df_mis_cotizaciones.empty and "Fecha" in df_mis_cotizaciones.columns:
+            cotizaciones_mes_actual = len(df_mis_cotizaciones[df_mis_cotizaciones["Fecha"].astype(str).str.startswith(mes_actual_str)])
+
+    # Catálogo del negocio activo
+    df_catalogo_todos = obtener_catalogo_api()
+    df_mi_catalogo = pd.DataFrame()
+    if not df_catalogo_todos.empty and "id_empresa" in df_catalogo_todos.columns:
+        f_user_cat = df_catalogo_todos["id_empresa"].str.lower() == user_email.lower()
+        if "id_negocio" in df_catalogo_todos.columns:
+            f_neg_cat = df_catalogo_todos["id_negocio"].astype(str) == str(negocio_seleccionado)
+            df_mi_catalogo = df_catalogo_todos[f_user_cat & f_neg_cat]
+        else:
+            df_mi_catalogo = df_catalogo_todos[f_user_cat]
+
     # --- PANTALLA 1: NUEVA COTIZACIÓN ---
     if menu == "📝 Nueva Cotización":
-        st.title("📄 Generar Cotización")
+        st.title(f"📄 Generar Cotización — {negocio_seleccionado}")
 
         if not es_pro and cotizaciones_mes_actual >= LIMITE_FREE_MENSUAL:
             st.error(f"🚫 **Has alcanzado el límite de {LIMITE_FREE_MENSUAL} cotizaciones gratuitas de este mes.**")
-            st.info(f"Tus {DIAS_PRUEBA_GRATIS} días de prueba gratuita han concluido. Para seguir cotizando sin límites, conservar tu catálogo y hoja membretada, actualiza al Plan Pro.")
+            st.info(f"Tus {DIAS_PRUEBA_GRATIS} días de prueba gratuita han concluido. Para cotizaciones ilimitadas y manejar hasta {MAX_NEGOCIOS_PRO} marcas, actualiza al Plan Pro.")
             st.stop()
 
         col_emisor, col_cliente = st.columns(2)
         with col_emisor:
-            st.subheader("🏢 Datos de tu Empresa")
-            mi_empresa = st.text_input("Nombre del Negocio", value=empresa_data.get("nombre", ""))
-            mi_telefono = st.text_input("Teléfono del Negocio", value=empresa_data.get("telefono", ""))
+            st.subheader(f"🏢 Emisor: {negocio_seleccionado}")
+            mi_empresa = st.text_input("Nombre de la Marca Emisora", value=negocio_seleccionado)
+            tel_sug = cfg_activa.get("telefono", empresa_data.get("telefono", ""))
+            mi_telefono = st.text_input("Teléfono de Contacto del Negocio", value=str(tel_sug))
 
         with col_cliente:
             st.subheader("👤 Datos del Cliente")
@@ -576,9 +622,9 @@ else:
 
         st.divider()
 
-        # ATAJO: Autocompletar desde Catálogo Guardado (Pro)
+        # ATAJO: Autocompletar desde Catálogo de este negocio
         if es_pro and not df_mi_catalogo.empty:
-            st.subheader("⚡ Carga Rápida desde tu Catálogo Pro")
+            st.subheader(f"⚡ Carga Rápida desde Catálogo ({negocio_seleccionado})")
             opciones_cat = ["-- Seleccionar del Catálogo --"] + df_mi_catalogo["Nombre"].tolist()
             item_sel = st.selectbox("Elige un producto/servicio para agregarlo en 1 clic:", opciones_cat)
             
@@ -651,7 +697,6 @@ else:
 
         st.divider()
 
-        # Resumen y Cálculos
         lista_actual = st.session_state.get("items", [])
         items_normalizados = []
         if isinstance(lista_actual, list):
@@ -706,20 +751,20 @@ else:
         with col_actions:
             st.subheader("🚀 Acciones Rápidas")
             if not df_items.empty and cliente_nombre and cliente_nombre.strip():
-                cfg_color = st.session_state.get("cfg_color", "#831843")
-                cfg_pie = st.session_state.get("cfg_pie", "")
-                cfg_align = st.session_state.get("cfg_align", "Izquierda")
-                cfg_logo_path = st.session_state.get("cfg_logo_path", None)
-                cfg_banco = st.session_state.get("cfg_banco", "")
-                cfg_clabe = st.session_state.get("cfg_clabe", "")
-                cfg_titular = st.session_state.get("cfg_titular", "")
-                cfg_firma_path = st.session_state.get("cfg_firma_path", None)
+                cfg_color = cfg_activa.get("color", "#831843")
+                cfg_pie = cfg_activa.get("pie_pdf", "Gracias por su preferencia.")
+                cfg_align = st.session_state.get(f"align_{negocio_seleccionado}", "Izquierda")
+                cfg_logo_path = st.session_state.get(f"logo_{negocio_seleccionado}", None)
+                cfg_banco = cfg_activa.get("banco", "")
+                cfg_clabe = cfg_activa.get("clabe", "")
+                cfg_titular = cfg_activa.get("titular", negocio_seleccionado)
+                cfg_firma_path = st.session_state.get(f"firma_{negocio_seleccionado}", None)
 
                 texto_bancario = f"Banco: {cfg_banco}\nCLABE: {cfg_clabe}\nBeneficiario: {cfg_titular}" if (cfg_clabe and cfg_banco) else ""
                 path_qr_pago = generar_qr_spei(cfg_clabe, cfg_titular) if (es_pro and cfg_clabe) else None
 
                 pdf_bytes = generar_pdf(
-                    mi_empresa if mi_empresa.strip() else "Mi Empresa", 
+                    mi_empresa if mi_empresa.strip() else negocio_seleccionado, 
                     mi_telefono, cliente_nombre, cliente_telefono, 
                     df_items, subtotal_bruto, monto_descuento, monto_iva, total_final, vigencia_dias, notas_adicionales,
                     es_pro=es_pro, logo_path=cfg_logo_path,
@@ -730,7 +775,7 @@ else:
                 st.download_button(
                     label="📥 Descargar Cotización en PDF",
                     data=pdf_bytes,
-                    file_name=f"Cotizacion_{cliente_nombre.strip().replace(' ', '_')}.pdf",
+                    file_name=f"Cotizacion_{negocio_seleccionado}_{cliente_nombre.strip().replace(' ', '_')}.pdf",
                     mime="application/pdf",
                     use_container_width=True
                 )
@@ -738,7 +783,7 @@ else:
                 # WhatsApp
                 resumen_lineas = [f"• *{it['Concepto']}* ({it['Cantidad']:.0f} {it['Tipo']}) -> ${it['Importe']:,.2f}" for _, it in df_items.iterrows()]
                 mensaje_wa = (
-                    f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{mi_empresa or 'nosotros'}*:\n\n"
+                    f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{mi_empresa or negocio_seleccionado}*:\n\n"
                     f"{chr(10).join(resumen_lineas)}\n\n"
                     f"💰 *TOTAL:* ${total_final:,.2f} MXN\n⏳ *Vigencia:* {vigencia_dias} días.\n\n"
                     f"Quedo a tu disposición si deseas confirmar o realizar algún ajuste."
@@ -748,15 +793,16 @@ else:
                 st.link_button("📲 Enviar Resumen por WhatsApp", wa_url, use_container_width=True)
 
                 # Google Calendar
-                cal_desc = f"Seguimiento de cotización enviada por ${total_final:,.2f} MXN. Tel: {cliente_telefono}"
-                cal_url = link_google_calendar(f"Llamar a {cliente_nombre} (Seguimiento Cotización)", cal_desc, fecha_seg)
+                cal_desc = f"Seguimiento de cotización enviada por ${total_final:,.2f} MXN. Tel: {cliente_telefono} ({negocio_seleccionado})"
+                cal_url = link_google_calendar(f"Llamar a {cliente_nombre} - {negocio_seleccionado}", cal_desc, fecha_seg)
                 st.link_button("📅 Agendar en Google Calendar", cal_url, use_container_width=True)
 
-                # Guardado
-                if st.button("💾 Guardar en mi Historial", use_container_width=True):
+                # Guardado por Negocio
+                if st.button("💾 Guardar en el Historial de este Negocio", use_container_width=True):
                     folio = f"COT-{datetime.datetime.now().strftime('%y%m%d%H%M')}"
                     datos_a_guardar = {
                         "id_empresa": user_email,
+                        "id_negocio": negocio_seleccionado,
                         "Folio": folio,
                         "Fecha": datetime.date.today().strftime("%Y-%m-%d"),
                         "Cliente": cliente_nombre.strip(),
@@ -773,22 +819,60 @@ else:
                     }
                     guardado = guardar_cotizacion_api(datos_a_guardar)
                     if guardado:
-                        st.success(f"✅ Cotización guardada con Folio {folio}")
+                        st.success(f"✅ Cotización guardada en {negocio_seleccionado} con Folio {folio}")
                     else:
                         st.error("Error al guardar la cotización.")
             else:
                 st.caption("Ingresa el nombre del cliente y al menos un concepto para habilitar la descarga del PDF y WhatsApp.")
 
-    # --- PANTALLA 2: MI CATÁLOGO ILIMITADO (PRO) ---
-    elif menu == "📦 Mi Catálogo Ilimitado":
-        st.title("📦 Catálogo de Productos y Servicios Ilimitado")
-        st.caption("Guarda todos tus paquetes y productos frecuentes para autocompletar cotizaciones en segundos.")
+    # --- PANTALLA 2: ADMINISTRAR MIS NEGOCIOS (HASTA 3 EN PRO) ---
+    elif menu == "🏢 Mis Negocios (Hasta 3)":
+        st.title("🏢 Gestión de Mis Marcas y Negocios")
+        st.caption(f"El **Plan Pro** te permite operar hasta **{MAX_NEGOCIOS_PRO} marcas o negocios independientes** bajo la misma cuenta.")
+
+        if not es_pro:
+            st.warning(f"🔒 La gestión de múltiples marcas está disponible en el **Plan Pro** y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
+            st.stop()
+
+        tab_lista_neg, tab_crear_neg = st.tabs(["📋 Mis Marcas Registradas", "➕ Dar de Alta Nuevo Negocio"])
+
+        with tab_crear_neg:
+            num_actual = len(df_mis_negocios) if not df_mis_negocios.empty else 1
+            if num_actual >= MAX_NEGOCIOS_PRO:
+                st.info(f"ℹ️ Ya has alcanzado el límite de **{MAX_NEGOCIOS_PRO} negocios registrados** incluido en tu Plan Pro.")
+            else:
+                with st.form("form_nuevo_negocio", clear_on_submit=True):
+                    st.write(f"Tienes **{num_actual} de {MAX_NEGOCIOS_PRO}** negocios registrados.")
+                    nuevo_neg_nombre = st.text_input("Nombre de la Nueva Empresa / Marca", placeholder="Ej. Kairós MKT / Alfa & Omega")
+                    nuevo_neg_tel = st.text_input("Teléfono de Contacto Oficial", placeholder="Ej. 9811234567")
+                    
+                    if st.form_submit_button("🚀 Crear y Registrar este Negocio", use_container_width=True):
+                        if nuevo_neg_nombre.strip():
+                            ok = agregar_nuevo_negocio_api(user_email, nuevo_neg_nombre.strip(), nuevo_neg_tel.strip())
+                            if ok:
+                                st.success(f"✅ ¡Negocio '{nuevo_neg_nombre.strip()}' dado de alta exitosamente!")
+                                st.rerun()
+                            else:
+                                st.error("Error al conectar con la base de datos.")
+                        else:
+                            st.warning("Escribe el nombre del negocio.")
+
+        with tab_lista_neg:
+            if not df_mis_negocios.empty:
+                st.dataframe(df_mis_negocios[["nombre_negocio", "telefono", "color", "banco", "clabe", "titular"]], use_container_width=True, hide_index=True)
+            else:
+                st.info("Solo tienes tu negocio principal registrado.")
+
+    # --- PANTALLA 3: MI CATÁLOGO POR MARCA ---
+    elif menu == "📦 Mi Catálogo por Marca":
+        st.title(f"📦 Catálogo Ilimitado — {negocio_seleccionado}")
+        st.caption(f"Los productos y servicios guardados aquí solo pertenecerán a la marca **{negocio_seleccionado}**.")
 
         if not es_pro:
             st.warning(f"🔒 El catálogo guardado está disponible en el **Plan Pro** y durante los **{DIAS_PRUEBA_GRATIS} días de prueba gratis**.")
             st.stop()
 
-        tab_ver_cat, tab_nuevo_cat = st.tabs(["📋 Mis Paquetes Guardados", "➕ Guardar Nuevo Producto / Servicio"])
+        tab_ver_cat, tab_nuevo_cat = st.tabs(["📋 Paquetes de este Negocio", f"➕ Agregar a {negocio_seleccionado}"])
 
         with tab_nuevo_cat:
             with st.form("form_nuevo_cat", clear_on_submit=True):
@@ -803,9 +887,9 @@ else:
                 cat_precio = st.number_input("Precio Base Sugerido ($ MXN)", min_value=0.0, step=100.0)
                 cat_detalle = st.text_area("¿Qué incluye este paquete? (Detalle / Alcance)", placeholder="Ej. Cobertura de 8 horas, 2 fotógrafos, galería web y cuadro 60x40cm.")
                 
-                if st.form_submit_button("💾 Guardar en mi Catálogo Ilimitado", use_container_width=True):
+                if st.form_submit_button(f"💾 Guardar en Catálogo de {negocio_seleccionado}", use_container_width=True):
                     if cat_nombre.strip():
-                        ok = guardar_item_catalogo_api(user_email, cat_tipo, cat_nombre.strip(), cat_unidad, float(cat_precio), cat_detalle.strip())
+                        ok = guardar_item_catalogo_api(user_email, negocio_seleccionado, cat_tipo, cat_nombre.strip(), cat_unidad, float(cat_precio), cat_detalle.strip())
                         if ok:
                             st.success(f"✅ '{cat_nombre.strip()}' guardado con éxito.")
                             st.rerun()
@@ -822,17 +906,17 @@ else:
                 st.subheader("🗑️ Eliminar un Ítem del Catálogo")
                 item_a_borrar = st.selectbox("Selecciona el ítem que deseas eliminar:", ["-- Seleccionar --"] + df_mi_catalogo["Nombre"].tolist())
                 if item_a_borrar != "-- Seleccionar --":
-                    if st.button(f"Eliminar '{item_a_borrar}'", type="primary"):
-                        eliminar_item_catalogo_api(user_email, item_a_borrar)
+                    if st.button(f"Eliminar '{item_a_borrar}' de {negocio_seleccionado}", type="primary"):
+                        eliminar_item_catalogo_api(user_email, negocio_seleccionado, item_a_borrar)
                         st.success("Ítem eliminado.")
                         st.rerun()
             else:
-                st.info("Aún no has registrado productos ni servicios en tu catálogo. Guarda tu primer paquete en la pestaña contigua.")
+                st.info(f"Aún no has registrado paquetes específicos para {negocio_seleccionado}.")
 
-    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA (100% PERSONALIZADO PRO) ---
+    # --- PANTALLA 4: HOJA MEMBRETADA DEL NEGOCIO ACTIVO ---
     elif menu == "🎨 Diseñar Hoja Membretada":
-        st.title("🎨 Personaliza tu Hoja Membretada, Cobro y Firma")
-        st.caption(f"Disponible en Plan Pro y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
+        st.title(f"🎨 Personalizar Hoja Membretada — {negocio_seleccionado}")
+        st.caption("Cada uno de tus negocios puede tener su propio color, logotipo, cuentas bancarias y pie de página.")
 
         if not es_pro:
             st.warning(f"🔒 Esta sección está disponible en el **Plan Pro** y durante los **{DIAS_PRUEBA_GRATIS} días de prueba gratis**.")
@@ -840,72 +924,76 @@ else:
         col_d1, col_d2 = st.columns([1.1, 1.2])
 
         with col_d1:
-            st.subheader("1. Identidad de Marca y Logo")
+            st.subheader(f"1. Identidad Visual: {negocio_seleccionado}")
             
-            # Selector de Color 100% Libre y Personalizado
-            color_actual = st.session_state.get("cfg_color", "#831843")
-            color_seleccionado = st.color_picker("Elige el Color Principal de tu Marca (100% Personalizado)", value=color_actual)
-            st.session_state["cfg_color"] = color_seleccionado
+            color_actual = cfg_activa.get("color", "#831843")
+            color_seleccionado = st.color_picker(f"Color Oficial de {negocio_seleccionado}", value=color_actual)
 
-            logo_subido = st.file_uploader("Subir Logo de Empresa (PNG/JPG)", type=["png", "jpg", "jpeg"])
+            logo_subido = st.file_uploader(f"Subir Logo de {negocio_seleccionado} (PNG/JPG)", type=["png", "jpg", "jpeg"], key=f"up_{negocio_seleccionado}")
             if logo_subido:
                 temp_dir = tempfile.gettempdir()
-                path_logo = os.path.join(temp_dir, f"logo_{user_email.replace('@','_')}.png")
+                path_logo = os.path.join(temp_dir, f"logo_{user_email.replace('@','_')}_{negocio_seleccionado}.png")
                 with open(path_logo, "wb") as f:
                     f.write(logo_subido.getbuffer())
-                st.session_state["cfg_logo_path"] = path_logo
+                st.session_state[f"logo_{negocio_seleccionado}"] = path_logo
                 st.success("✅ Logotipo cargado.")
             
-            st.session_state["cfg_align"] = st.radio("Alineación del Logotipo", ["Izquierda", "Derecha"], horizontal=True)
+            align_val = st.radio("Alineación del Logotipo", ["Izquierda", "Derecha"], horizontal=True, key=f"align_r_{negocio_seleccionado}")
+            st.session_state[f"align_{negocio_seleccionado}"] = align_val
 
             st.write("---")
             st.subheader("2. Datos de Cobro Bancario (SPEI y QR)")
             
-            # Selector de Bancos no editable con buscador integrado
-            banco_guardado = st.session_state.get("cfg_banco", None)
+            banco_guardado = cfg_activa.get("banco", None)
             idx_banco = LISTA_BANCOS_MX.index(banco_guardado) if (banco_guardado in LISTA_BANCOS_MX) else None
             
             banco_in = st.selectbox(
-                "Banco Receptor (Escribe para buscar tu institución)", 
+                "Banco Receptor", 
                 LISTA_BANCOS_MX, 
                 index=idx_banco,
                 placeholder="Escribe o selecciona tu institución bancaria..."
             )
             
-            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=st.session_state.get("cfg_clabe", ""), placeholder="Ej. 012180012345678901")
-            titular_in = st.text_input("Nombre del Beneficiario / Titular", value=st.session_state.get("cfg_titular", empresa_data.get('nombre', '')))
-            
-            st.session_state["cfg_banco"] = banco_in
-            st.session_state["cfg_clabe"] = clabe_in
-            st.session_state["cfg_titular"] = titular_in
+            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=str(cfg_activa.get("clabe", "")), placeholder="Ej. 012180012345678901")
+            titular_in = st.text_input("Nombre del Beneficiario / Titular", value=str(cfg_activa.get("titular", negocio_seleccionado)))
 
             st.write("---")
-            st.subheader("3. Firma / Sello y Pie de Página")
-            firma_subida = st.file_uploader("Subir Firma Digital / Sello", type=["png", "jpg", "jpeg"], key="firma_up")
+            st.subheader("3. Firma y Pie de Página")
+            firma_subida = st.file_uploader("Subir Firma Digital / Sello", type=["png", "jpg", "jpeg"], key=f"firma_{negocio_seleccionado}")
             if firma_subida:
                 temp_dir = tempfile.gettempdir()
-                path_firma = os.path.join(temp_dir, f"firma_{user_email.replace('@','_')}.png")
+                path_firma = os.path.join(temp_dir, f"firma_{user_email.replace('@','_')}_{negocio_seleccionado}.png")
                 with open(path_firma, "wb") as f:
                     f.write(firma_subida.getbuffer())
-                st.session_state["cfg_firma_path"] = path_firma
+                st.session_state[f"firma_{negocio_seleccionado}"] = path_firma
                 st.success("✅ Firma/Sello cargado.")
 
             pie_texto = st.text_area(
                 "Texto personalizado al pie del PDF", 
-                value=st.session_state.get("cfg_pie", "Gracias por su preferencia - Documento emitido para fines presupuestarios."),
-                key="pie_in"
+                value=str(cfg_activa.get("pie_pdf", "Gracias por su preferencia - Documento emitido para fines presupuestarios.")),
+                key=f"pie_in_{negocio_seleccionado}"
             )
-            st.session_state["cfg_pie"] = pie_texto
+
+            tel_negocio_in = st.text_input("Teléfono del Negocio", value=str(cfg_activa.get("telefono", "")))
+
+            if st.button(f"💾 Guardar Ajustes para {negocio_seleccionado}", use_container_width=True, type="primary"):
+                ok = guardar_config_negocio_api(
+                    user_email, negocio_seleccionado, tel_negocio_in, 
+                    color_seleccionado, banco_in or "", clabe_in, titular_in, pie_texto
+                )
+                if ok:
+                    st.success("✅ Configuración guardada en la base de datos.")
+                    st.rerun()
 
         with col_d2:
-            st.subheader("👁️ Vista Previa de tu Hoja Membretada")
+            st.subheader(f"👁️ Vista Previa: {negocio_seleccionado}")
             st.caption("Simulación visual de cómo se estructurará tu PDF oficial.")
 
             with st.container(border=True):
                 col_hdr1, col_hdr2 = st.columns([3, 1])
                 with col_hdr1:
-                    st.markdown(f"<h3 style='color:{color_seleccionado}; margin-bottom:0;'>{empresa_data.get('nombre', 'MI EMPRESA').upper()}</h3>", unsafe_allow_html=True)
-                    st.caption(f"Contacto: {empresa_data.get('telefono', '9811234567')}")
+                    st.markdown(f"<h3 style='color:{color_seleccionado}; margin-bottom:0;'>{negocio_seleccionado.upper()}</h3>", unsafe_allow_html=True)
+                    st.caption(f"Contacto: {tel_negocio_in or '9811234567'}")
                 with col_hdr2:
                     st.markdown(f"<div style='text-align:right; font-weight:bold; color:{color_seleccionado}; border:1px solid #cbd5e1; padding:4px 8px; border-radius:4px; font-size:12px;'>COTIZACIÓN</div>", unsafe_allow_html=True)
                 
@@ -922,8 +1010,8 @@ else:
                 st.write("")
                 
                 df_demo = pd.DataFrame([
-                    {"Descripción": "Servicio de Cobertura / Producción", "Cant.": "1.00", "P. Unitario": "$3,500.00", "Subtotal": "$3,500.00"},
-                    {"Descripción": "Impresión en Cuadro Fotográfico Canvas", "Cant.": "2.00", "P. Unitario": "$600.00", "Subtotal": "$1,200.00"}
+                    {"Descripción": f"Servicio especializado ({negocio_seleccionado})", "Cant.": "1.00", "P. Unitario": "$3,500.00", "Subtotal": "$3,500.00"},
+                    {"Descripción": "Paquete complementario", "Cant.": "2.00", "P. Unitario": "$600.00", "Subtotal": "$1,200.00"}
                 ])
                 st.dataframe(df_demo, use_container_width=True, hide_index=True)
 
@@ -938,11 +1026,9 @@ else:
                 st.write("---")
                 st.markdown(f"<div style='text-align:center; font-size:11px; color:#94a3b8;'>{pie_texto}</div>", unsafe_allow_html=True)
 
-        st.success("✅ Todos los ajustes de diseño y cobro han sido guardados para tus próximas cotizaciones.")
-
-    # --- PANTALLA 4: HISTORIAL Y MINI-CRM ---
+    # --- PANTALLA 5: HISTORIAL Y CRM DEL NEGOCIO ACTIVO ---
     elif menu == "📊 Mis Cotizaciones & CRM":
-        st.title(f"📊 Control Comercial y CRM - {empresa_data.get('nombre', 'Mi Empresa')}")
+        st.title(f"📊 Control Comercial — {negocio_seleccionado}")
         
         if not df_mis_cotizaciones.empty:
             total_sum = pd.to_numeric(df_mis_cotizaciones['Total'], errors='coerce').sum()
@@ -960,7 +1046,7 @@ else:
                 st.metric("Ventas Ganadas", aprobadas)
 
             st.write("---")
-            st.subheader("🔄 Cambiar Estatus de Cotización en Tiempo Real")
+            st.subheader(f"🔄 Cambiar Estatus en {negocio_seleccionado}")
             col_crm1, col_crm2, col_crm3 = st.columns([2, 2, 1])
             with col_crm1:
                 folio_sel = st.selectbox("Selecciona el Folio a actualizar:", df_mis_cotizaciones["Folio"].tolist())
@@ -976,48 +1062,53 @@ else:
                         st.rerun()
 
             st.write("---")
-            st.subheader("📋 Registro Completo")
+            st.subheader(f"📋 Registro de {negocio_seleccionado}")
             cols_crm = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
             st.dataframe(df_mis_cotizaciones[cols_crm], use_container_width=True, hide_index=True)
 
             csv_data = df_mis_cotizaciones.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Exportar Historial a Excel (CSV)",
+                label=f"📥 Exportar Ventas de {negocio_seleccionado} a Excel (CSV)",
                 data=csv_data,
-                file_name=f"Reporte_Ventas_{user_email}.csv",
+                file_name=f"Ventas_{negocio_seleccionado}_{datetime.date.today().strftime('%Y%m%d')}.csv",
                 mime="text/csv"
             )
         else:
-            st.info("Aún no tienes cotizaciones guardadas en tu cuenta.")
+            st.info(f"Aún no hay cotizaciones emitidas para {negocio_seleccionado}.")
 
-    # --- PANTALLA 5: PLAN PRO ---
-    elif menu == "⭐ Plan Pro":
-        st.title("⭐ Potencia tu Negocio con el Plan Pro")
-        st.write("Herramientas comerciales avanzadas para vender más rápido y profesionalizar tu empresa.")
+    # --- PANTALLA 6: PLANES Y PRECIOS ---
+    elif menu == "⭐ Planes y Precios":
+        st.title("⭐ Planes y Precios")
+        st.write("Elige el plan ideal para profesionalizar y escalar tus propuestas comerciales.")
         
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
+        col_p1, col_p2 = st.columns(2)
+        
+        with col_p1:
             st.markdown(f"""
-            ### 🟢 Plan Free (Después de {DIAS_PRUEBA_GRATIS} días)
+            ### 🟢 Plan Free
+            **$0 MXN / mes**
+            - **1 solo negocio**
             - Hasta **{LIMITE_FREE_MENSUAL} cotizaciones al mes**
-            - Marca de agua estándar en PDF
-            - Captura manual de productos
-            - Sin datos bancarios ni QR
+            - Formato estándar con marca de agua en PDF
+            - Soporte estándar
             """)
-        with col_c2:
-            st.markdown("""
-            ### ⭐ Plan Pro ($149 MXN / mes)
-            - **Cotizaciones Ilimitadas**
-            - **Catálogo Ilimitado** para cotizar en 1 clic
-            - **Hoja Membretada con Colores 100% Personalizados y Logotipo**
-            - **Datos Bancarios + QR SPEI de pago** directo
-            - **Firma digital / Sello escaneado**
+
+        with col_p2:
+            st.markdown(f"""
+            ### ⭐ Plan Pro
+            **$220 MXN / mes** *(Completo)*
+            - **Hasta {MAX_NEGOCIOS_PRO} Negocios / Marcas independientes**
+            - **Cotizaciones Ilimitadas** en todas tus marcas
+            - **Catálogo Ilimitado** aislado por cada negocio
+            - **Hoja Membretada con Colores y Logotipo oficial** por marca
+            - **Cuentas Bancarias + QR SPEI de pago directo** independientes
             - **Calculadora de IVA y Descuentos comerciales**
-            - **Pipeline CRM con cambio de estatus** y exportación a Excel
+            - **Firma digital / Sello escaneado**
+            - **Pipeline CRM y reportes en Excel**
             - **Sin marcas de agua**
             """)
 
         st.divider()
-        st.info("💡 Para activar tu membresía Pro permanente, contáctanos vía WhatsApp.")
-        wa_upgrade = f"https://wa.me/529817360428?text=Hola,%20quiero%20activar%20mi%20suscripción%20Pro%20en%20Cotizador%20PyME%20para%20la%20cuenta%20{user_email}"
-        st.link_button("📲 Activar Plan Pro por WhatsApp", wa_upgrade, use_container_width=True)
+        st.info("💡 Para activar tu suscripción Pro permanente, contáctanos directamente vía WhatsApp.")
+        wa_upgrade = f"https://wa.me/529817360428?text=Hola,%20quiero%20activar%20mi%20Plan%20Pro%20($220/mes)%20en%20Cotizador%20PyME%20para%20la%20cuenta%20{user_email}"
+        st.link_button("📲 Solicitar Activación Pro por WhatsApp", wa_upgrade, use_container_width=True)
