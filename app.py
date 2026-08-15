@@ -19,6 +19,27 @@ COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Impo
 LIMITE_FREE_MENSUAL = 3
 DIAS_PRUEBA_GRATIS = 3
 
+# --- Catálogo Oficial de Bancos / SPEI en México ---
+LISTA_BANCOS_MX = [
+    "-- Seleccionar Banco / Institución --",
+    "ACTINVER", "AFIRME", "albo", "ARCUS FI", "ASP INTEGRA OPC", "AZTECA", "BaBien", 
+    "BAJIO", "BANAMEX", "BANCO COVALTO", "BANCOMEXT", "BANCOPPEL", "BANCO S3", 
+    "BANCREA", "BANJERCITO", "BANKAOOL", "BANK OF AMERICA", "BANK OF CHINA", 
+    "BANOBRAS", "BANORTE", "BANREGIO", "BANSI", "BANXICO", "BARCLAYS", "BBASE", 
+    "BBVA MEXICO", "BMONEX", "CAJA POP MEXICA", "CAJA TELEFONIST", "CASHI CUENTA", 
+    "CITI MEXICO", "Clip", "CLS", "CoDi Valida", "COMPARTAMOS", "CONSUBANCO", 
+    "COOPDESARROLLO", "CREDICAPITAL", "CREDICLUB", "CRISTOBAL COLON", "Cuenca", 
+    "Dep y Pag Dig", "DONDE", "FINAMEX", "FINCOMUN", "FINCO PAY", "FINTOC", 
+    "FONDEADORA", "FONDO (FIRA)", "GBM", "HEY BANCO", "HIPOTECARIA FED", "HSBC", 
+    "ICBC", "INBURSA", "INDEVAL", "INMOBILIARIO", "INTERCAM BANCO", "INVEX", 
+    "JP MORGAN", "KAPITAL", "KLAR", "KUSPIT", "LIBERTAD", "MASARI", "Mercado Pago W", 
+    "MexPago", "MIFEL", "MIZUHO BANK", "MONEXCB", "MUFG", "MULTIVA BANCO", "NAFIN", 
+    "NUBANK", "NVIO", "PAGATODO", "Peibo", "PPBALANCEMX", "PROFUTURO", "SABADELL", 
+    "SANTANDER", "SCOTIABANK", "SHINHAN", "SPIN BY OXXO", "STP", "TESORED", 
+    "TRANSFER", "TRANSFER DIRECT", "TRF", "UALA", "UNAGRA", "VALMEX", "VALUE", 
+    "VE POR MAS", "VOLKSWAGEN"
+]
+
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
@@ -387,7 +408,6 @@ def link_google_calendar(titulo, descripcion, fecha_seguimiento):
     return f"https://calendar.google.com/calendar/render?{urllib.parse.urlencode(params)}"
 
 def generar_qr_spei(clabe, titular):
-    """Genera imagen QR con los datos bancarios usando la API pública rápida"""
     if not clabe:
         return None
     datos = f"SPEI - Titular: {titular} | CLABE: {clabe}"
@@ -565,7 +585,7 @@ else:
 
         st.divider()
 
-        # ATAJO: Autocompletar desde Catálogo Guardado (Exclusivo Pro)
+        # ATAJO: Autocompletar desde Catálogo Guardado (Pro)
         if es_pro and not df_mi_catalogo.empty:
             st.subheader("⚡ Carga Rápida desde tu Catálogo Pro")
             opciones_cat = ["-- Seleccionar del Catálogo --"] + df_mi_catalogo["Nombre"].tolist()
@@ -640,7 +660,7 @@ else:
 
         st.divider()
 
-        # Resumen y Cálculos Financieros
+        # Resumen y Cálculos
         lista_actual = st.session_state.get("items", [])
         items_normalizados = []
         if isinstance(lista_actual, list):
@@ -659,7 +679,7 @@ else:
             
             subtotal_bruto = float(df_items["Importe"].sum())
 
-            # Calculadora de Descuentos e IVA (Exclusivo Pro)
+            # Calculadora de Descuentos e IVA
             col_calc1, col_calc2, col_calc3 = st.columns(3)
             with col_calc1:
                 st.metric("Subtotal de Conceptos", f"${subtotal_bruto:,.2f} MXN")
@@ -704,8 +724,7 @@ else:
                 cfg_titular = st.session_state.get("cfg_titular", "")
                 cfg_firma_path = st.session_state.get("cfg_firma_path", None)
 
-                # Generar QR para el pago SPEI si hay CLABE
-                texto_bancario = f"Banco: {cfg_banco}\nCLABE: {cfg_clabe}\nBeneficiario: {cfg_titular}" if cfg_clabe else ""
+                texto_bancario = f"Banco: {cfg_banco}\nCLABE: {cfg_clabe}\nBeneficiario: {cfg_titular}" if (cfg_clabe and cfg_banco and cfg_banco != "-- Seleccionar Banco / Institución --") else ""
                 path_qr_pago = generar_qr_spei(cfg_clabe, cfg_titular) if (es_pro and cfg_clabe) else None
 
                 pdf_bytes = generar_pdf(
@@ -725,7 +744,7 @@ else:
                     use_container_width=True
                 )
 
-                # WhatsApp con desglose estructurado
+                # WhatsApp
                 resumen_lineas = [f"• *{it['Concepto']}* ({it['Cantidad']:.0f} {it['Tipo']}) -> ${it['Importe']:,.2f}" for _, it in df_items.iterrows()]
                 mensaje_wa = (
                     f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{mi_empresa or 'nosotros'}*:\n\n"
@@ -742,7 +761,7 @@ else:
                 cal_url = link_google_calendar(f"Llamar a {cliente_nombre} (Seguimiento Cotización)", cal_desc, fecha_seg)
                 st.link_button("📅 Agendar en Google Calendar", cal_url, use_container_width=True)
 
-                # Guardado en Google Sheets
+                # Guardado
                 if st.button("💾 Guardar en mi Historial", use_container_width=True):
                     folio = f"COT-{datetime.datetime.now().strftime('%y%m%d%H%M')}"
                     datos_a_guardar = {
@@ -819,7 +838,7 @@ else:
             else:
                 st.info("Aún no has registrado productos ni servicios en tu catálogo. Guarda tu primer paquete en la pestaña contigua.")
 
-    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA ---
+    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA CON VISTA PREVIA EN VIVO ---
     elif menu == "🎨 Diseñar Hoja Membretada":
         st.title("🎨 Personaliza tu Hoja Membretada, Cobro y Firma")
         st.caption(f"Disponible en Plan Pro y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
@@ -827,7 +846,7 @@ else:
         if not es_pro:
             st.warning(f"🔒 Esta sección está disponible en el **Plan Pro** y durante los **{DIAS_PRUEBA_GRATIS} días de prueba gratis**.")
         
-        col_d1, col_d2 = st.columns(2)
+        col_d1, col_d2 = st.columns([1.1, 1.2])
 
         with col_d1:
             st.subheader("1. Identidad de Marca y Logo")
@@ -840,10 +859,10 @@ else:
                 "Personalizado": "#1e293b"
             }
             eleccion_paleta = st.selectbox("Color Principal", list(paletas.keys()))
-            color_seleccionado = st.color_picker("Color hexadecimal", value="#1e293b") if eleccion_paleta == "Personalizado" else paletas[eleccion_paleta]
+            color_seleccionado = st.color_picker("Color hexadecimal", value="#831843") if eleccion_paleta == "Personalizado" else paletas[eleccion_paleta]
             st.session_state["cfg_color"] = color_seleccionado
 
-            logo_subido = st.file_uploader("Subir Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
+            logo_subido = st.file_uploader("Subir Logo de Empresa (PNG/JPG)", type=["png", "jpg", "jpeg"])
             if logo_subido:
                 temp_dir = tempfile.gettempdir()
                 path_logo = os.path.join(temp_dir, f"logo_{user_email.replace('@','_')}.png")
@@ -855,7 +874,22 @@ else:
             st.session_state["cfg_align"] = st.radio("Alineación del Logotipo", ["Izquierda", "Derecha"], horizontal=True)
 
             st.write("---")
-            st.subheader("2. Firma / Sello Escaneado (Opcional)")
+            st.subheader("2. Datos de Cobro Bancario (SPEI y QR)")
+            
+            # Selector de Bancos con autocompletado y búsqueda
+            banco_actual = st.session_state.get("cfg_banco", "-- Seleccionar Banco / Institución --")
+            idx_banco = LISTA_BANCOS_MX.index(banco_actual) if banco_actual in LISTA_BANCOS_MX else 0
+            banco_in = st.selectbox("Banco Receptor (Escribe para buscar tu institución)", LISTA_BANCOS_MX, index=idx_banco)
+            
+            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=st.session_state.get("cfg_clabe", ""), placeholder="Ej. 012180012345678901")
+            titular_in = st.text_input("Nombre del Beneficiario / Titular", value=st.session_state.get("cfg_titular", empresa_data.get('nombre', '')))
+            
+            st.session_state["cfg_banco"] = banco_in
+            st.session_state["cfg_clabe"] = clabe_in
+            st.session_state["cfg_titular"] = titular_in
+
+            st.write("---")
+            st.subheader("3. Firma / Sello y Pie de Página")
             firma_subida = st.file_uploader("Subir Firma Digital / Sello", type=["png", "jpg", "jpeg"], key="firma_up")
             if firma_subida:
                 temp_dir = tempfile.gettempdir()
@@ -865,24 +899,73 @@ else:
                 st.session_state["cfg_firma_path"] = path_firma
                 st.success("✅ Firma/Sello cargado.")
 
-        with col_d2:
-            st.subheader("3. Datos de Cobro Bancario (SPEI y QR)")
-            banco_in = st.text_input("Banco Receptor", value=st.session_state.get("cfg_banco", "BBVA / Banamex / Santander"))
-            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=st.session_state.get("cfg_clabe", ""))
-            titular_in = st.text_input("Nombre del Beneficiario / Titular", value=st.session_state.get("cfg_titular", empresa_data.get('nombre', '')))
-            
-            st.session_state["cfg_banco"] = banco_in
-            st.session_state["cfg_clabe"] = clabe_in
-            st.session_state["cfg_titular"] = titular_in
-
-            st.write("---")
-            st.subheader("4. Pie de Página y Textos Legales")
             pie_texto = st.text_area(
                 "Texto personalizado al pie del PDF", 
-                value=st.session_state.get("cfg_pie", "Gracias por su preferencia - Precios sujetos a cambio sin previo aviso."),
+                value=st.session_state.get("cfg_pie", "Gracias por su preferencia - Documento emitido para fines presupuestarios."),
                 key="pie_in"
             )
             st.session_state["cfg_pie"] = pie_texto
+
+        with col_d2:
+            st.subheader("👁️ Vista Previa en Vivo de tu Hoja Membretada")
+            st.caption("Esta vista se actualiza en tiempo real con los colores, datos bancarios y textos que edites.")
+
+            # Formatear caja de banco para la vista previa
+            info_banco_preview = ""
+            if banco_in and banco_in != "-- Seleccionar Banco / Institución --" and clabe_in:
+                info_banco_preview = f"""
+                <div style="margin-top: 15px; padding: 10px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
+                    <div style="font-weight: bold; color: {color_seleccionado}; font-size: 11px; margin-bottom: 4px;">INFORMACIÓN DE PAGO / SPEI</div>
+                    <div style="font-size: 11px; color: #334155;"><b>Banco:</b> {banco_in}</div>
+                    <div style="font-size: 11px; color: #334155;"><b>CLABE:</b> {clabe_in}</div>
+                    <div style="font-size: 11px; color: #334155;"><b>Beneficiario:</b> {titular_in}</div>
+                </div>
+                """
+
+            st.markdown(
+                f"""
+                <div style="border: 2px solid #e2e8f0; border-radius: 10px; padding: 22px; background-color: #ffffff; color: #1e293b; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid {color_seleccionado}; padding-bottom: 12px;">
+                        <div>
+                            <h2 style="margin: 0; color: {color_seleccionado}; font-size: 20px;">{empresa_data.get('nombre', 'MI EMPRESA').upper()}</h2>
+                            <small style="color: #64748b; font-size: 12px;">Contacto: {empresa_data.get('telefono', '9811234567')}</small>
+                        </div>
+                        <div style="background-color: #f1f5f9; padding: 6px 14px; border-radius: 5px; font-weight: bold; color: {color_seleccionado}; font-size: 13px; border: 1px solid #cbd5e1;">COTIZACIÓN</div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; font-size: 12px; color: #475569; display: flex; justify-content: space-between;">
+                        <div><b>CLIENTE:</b> Ejemplo de Cliente S.A.<br><span style="color: #64748b;">Tel: 9811000000</span></div>
+                        <div style="text-align: right;"><b>Fecha:</b> {datetime.date.today().strftime('%d/%m/%Y')}<br><span style="color: #64748b;">Válido por: 7 días</span></div>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
+                        <tr style="background-color: #f1f5f9; color: {color_seleccionado}; font-weight: bold; border-bottom: 1px solid #cbd5e1;">
+                            <th style="padding: 6px; text-align: left;">Descripción</th>
+                            <th style="padding: 6px; text-align: center;">Cant.</th>
+                            <th style="padding: 6px; text-align: right;">P. Unitario</th>
+                            <th style="padding: 6px; text-align: right;">Subtotal</th>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                            <td style="padding: 6px;">Servicios profesionales membretados</td>
+                            <td style="padding: 6px; text-align: center;">1.00</td>
+                            <td style="padding: 6px; text-align: right;">$3,500.00</td>
+                            <td style="padding: 6px; text-align: right;">$3,500.00</td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top: 10px; text-align: right; font-size: 13px; font-weight: bold; color: {color_seleccionado}; padding-top: 6px; border-top: 2px solid #f1f5f9;">
+                        TOTAL A LIQUIDAR: $3,500.00 MXN
+                    </div>
+
+                    {info_banco_preview}
+
+                    <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 8px; text-align: center; font-size: 11px; color: #94a3b8;">
+                        {pie_texto}
+                    </div>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
 
         st.success("✅ Todos los ajustes de diseño y cobro han sido guardados para tus próximas cotizaciones.")
 
