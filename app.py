@@ -4,27 +4,66 @@ from fpdf import FPDF
 import datetime
 import urllib.parse
 import hashlib
-from streamlit_gsheets import GSheetsConnection
+import requests
 
-# --- URL Directa de tu Google Sheet ---
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1tbTxrjmH1DVFOfhgSJeCGp18T_Cf4zQrqWNgqMh36Zw/edit"
+# --- URL de Google Apps Script Webhook ---
+API_URL = "https://script.google.com/macros/s/AKfycbywyo3MzZpjpgx7W98nsjAsKHinQoi8RumnKUKikCqyRjqLyPmJybxevmRriF0PDrtWWw/exec"
 
 # --- Configuración de Página ---
 st.set_page_config(page_title="Cotizador PyME Pro", page_icon="🏢", layout="wide")
 
 COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]
 
-# --- Funciones de Seguridad (Hashing de contraseñas) ---
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-# --- Conexión con Google Sheets ---
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception:
-    conn = None
+# --- Funciones de Conexión con Google Sheets ---
+def obtener_usuarios():
+    try:
+        res = requests.get(f"{API_URL}?action=get_users", timeout=12, allow_redirects=True)
+        data = res.json()
+        if isinstance(data, list) and len(data) > 1:
+            headers = [str(h).strip().lower() for h in data[0]]
+            return pd.DataFrame(data[1:], columns=headers)
+        return pd.DataFrame(columns=["email", "password", "nombre_empresa", "telefono", "plan"])
+    except Exception:
+        return pd.DataFrame(columns=["email", "password", "nombre_empresa", "telefono", "plan"])
 
-# --- Inicialización del Estado de Sesión ---
+def registrar_usuario_api(email, password_hashed, nombre_empresa, telefono):
+    try:
+        payload = {
+            "action": "register_user",
+            "email": email,
+            "password": password_hashed,
+            "nombre_empresa": nombre_empresa,
+            "telefono": telefono,
+            "plan": "Free"
+        }
+        res = requests.post(API_URL, json=payload, timeout=12, allow_redirects=True)
+        return res.json().get("status") == "success"
+    except Exception:
+        return False
+
+def obtener_cotizaciones():
+    try:
+        res = requests.get(f"{API_URL}?action=get_cotizaciones", timeout=12, allow_redirects=True)
+        data = res.json()
+        if isinstance(data, list) and len(data) > 1:
+            headers = [str(h).strip() for h in data[0]]
+            return pd.DataFrame(data[1:], columns=headers)
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+def guardar_cotizacion_api(data_dict):
+    try:
+        data_dict["action"] = "save_cotizacion"
+        res = requests.post(API_URL, json=data_dict, timeout=12, allow_redirects=True)
+        return res.json().get("status") == "success"
+    except Exception:
+        return False
+
+# --- Inicialización del Estado ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
     st.session_state["usuario_actual"] = None
@@ -33,7 +72,7 @@ if "autenticado" not in st.session_state:
 if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
     st.session_state["items"] = []
 
-# --- Clase de Generación PDF ---
+# --- Generación de PDF ---
 class PDFCotizacion(FPDF):
     def __init__(self, emisor_nombre, emisor_tel):
         super().__init__()
@@ -95,7 +134,6 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
     pdf.cell(30, 7, "Subtotal", border=1, align="R", fill=True)
     pdf.ln()
 
-    # Filas
     for _, row in items_df.iterrows():
         concepto = sanitizar_texto(str(row["Concepto"]))
         tipo_unidad = sanitizar_texto(f"{row['Tipo']} ({row['Cantidad']:.2f})")
@@ -175,30 +213,27 @@ if not st.session_state["autenticado"]:
             if btn_login:
                 if not correo_login or not pass_login:
                     st.error("Por favor completa todos los campos.")
-                elif conn:
-                    try:
-                        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Usuarios", ttl="0m")
-                        if not df_users.empty and "email" in df_users.columns:
-                            pass_hashed = hash_password(pass_login)
-                            usuario_match = df_users[(df_users["email"].str.lower() == correo_login) & (df_users["password"] == pass_hashed)]
-                            
-                            if not usuario_match.empty:
-                                user_row = usuario_match.iloc[0]
-                                st.session_state["autenticado"] = True
-                                st.session_state["usuario_actual"] = correo_login
-                                st.session_state["datos_empresa"] = {
-                                    "nombre": str(user_row.get("nombre_empresa", "Mi Negocio")),
-                                    "telefono": str(user_row.get("telefono", "")),
-                                    "plan": str(user_row.get("plan", "Free"))
-                                }
-                                st.success("¡Bienvenido!")
-                                st.rerun()
-                            else:
-                                st.error("Correo o contraseña incorrectos.")
+                else:
+                    df_users = obtener_usuarios()
+                    if not df_users.empty and "email" in df_users.columns:
+                        pass_hashed = hash_password(pass_login)
+                        usuario_match = df_users[(df_users["email"].str.lower() == correo_login) & (df_users["password"] == pass_hashed)]
+                        
+                        if not usuario_match.empty:
+                            user_row = usuario_match.iloc[0]
+                            st.session_state["autenticado"] = True
+                            st.session_state["usuario_actual"] = correo_login
+                            st.session_state["datos_empresa"] = {
+                                "nombre": str(user_row.get("nombre_empresa", "Mi Negocio")),
+                                "telefono": str(user_row.get("telefono", "")),
+                                "plan": str(user_row.get("plan", "Free"))
+                            }
+                            st.success("¡Bienvenido!")
+                            st.rerun()
                         else:
-                            st.warning("No hay usuarios registrados aún. Crea tu cuenta en la pestaña 'Registrar mi Negocio'.")
-                    except Exception as e:
-                        st.error(f"Error al conectar con la base de datos: {e}")
+                            st.error("Correo o contraseña incorrectos.")
+                    else:
+                        st.warning("No hay usuarios registrados aún. Crea tu cuenta en la pestaña 'Registrar mi Negocio'.")
 
     with tab_registro:
         with st.form("form_reg"):
@@ -211,27 +246,16 @@ if not st.session_state["autenticado"]:
             if btn_reg:
                 if not reg_email or not reg_pass or not reg_empresa:
                     st.error("Todos los campos obligatorios deben completarse.")
-                elif conn:
-                    try:
-                        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Usuarios", ttl="0m")
-                        if not df_users.empty and "email" in df_users.columns and reg_email in df_users["email"].str.lower().values:
-                            st.warning("Este correo ya se encuentra registrado. Inicia sesión.")
+                else:
+                    df_users = obtener_usuarios()
+                    if not df_users.empty and "email" in df_users.columns and reg_email in df_users["email"].str.lower().values:
+                        st.warning("Este correo ya se encuentra registrado. Inicia sesión.")
+                    else:
+                        ok = registrar_usuario_api(reg_email, hash_password(reg_pass), reg_empresa.strip(), reg_tel.strip())
+                        if ok:
+                            st.success("¡Negocio registrado con éxito! Ya puedes iniciar sesión en la pestaña 'Iniciar Sesión'.")
                         else:
-                            nuevo_usuario = pd.DataFrame([{
-                                "email": reg_email,
-                                "password": hash_password(reg_pass),
-                                "nombre_empresa": reg_empresa.strip(),
-                                "telefono": reg_tel.strip(),
-                                "plan": "Free"
-                            }])
-                            if df_users.empty:
-                                df_actualizado = nuevo_usuario
-                            else:
-                                df_actualizado = pd.concat([df_users, nuevo_usuario], ignore_index=True)
-                            conn.update(spreadsheet=SHEET_URL, worksheet="Usuarios", data=df_actualizado)
-                            st.success("¡Negocio registrado con éxito! Ya puedes iniciar sesión.")
-                    except Exception as e:
-                        st.error(f"Error en el registro: {e}")
+                            st.error("Hubo un error al registrar en la base de datos.")
 
 # ==============================================================================
 # VISTA: PANEL PRIVADO DEL USUARIO
@@ -254,7 +278,7 @@ else:
             st.session_state["items"] = []
             st.rerun()
 
-    # --- PANTALLA 1: NUEVA COTIZACIÓN ---
+    # --- NUEVA COTIZACIÓN ---
     if menu == "📝 Nueva Cotización":
         st.title("📄 Generar Cotización")
         
@@ -389,66 +413,53 @@ else:
                 cal_url = link_google_calendar(f"Llamar a {cliente_nombre} (Seguimiento Cotización)", cal_desc, fecha_seg)
                 st.link_button("📅 Agendar en Google Calendar", cal_url, use_container_width=True)
 
-                # Guardado en Google Sheets con ID aislado
-                if conn:
-                    if st.button("💾 Guardar en mi Historial", use_container_width=True):
-                        try:
-                            folio = f"COT-{datetime.datetime.now().strftime('%y%m%d%H%M')}"
-                            nueva_fila = pd.DataFrame([{
-                                "id_empresa": user_email,
-                                "Folio": folio,
-                                "Fecha": datetime.date.today().strftime("%Y-%m-%d"),
-                                "Cliente": cliente_nombre.strip(),
-                                "Telefono": cliente_telefono.strip(),
-                                "Total": total_cotizacion,
-                                "Conceptos": " | ".join([f"{it['Concepto']} ({it['Cantidad']})" for _, it in df_items.iterrows()]),
-                                "Vigencia_Dias": vigencia_dias,
-                                "Fecha_Seguimiento": fecha_seg.strftime("%Y-%m-%d"),
-                                "Estatus": "Pendiente",
-                                "Notas": notas_adicionales.strip()
-                            }])
-                            
-                            df_actual = conn.read(spreadsheet=SHEET_URL, worksheet="Cotizaciones", ttl="0m")
-                            if df_actual.empty:
-                                df_actualizado = nueva_fila
-                            else:
-                                df_actualizado = pd.concat([df_actual, nueva_fila], ignore_index=True)
-                            
-                            conn.update(spreadsheet=SHEET_URL, worksheet="Cotizaciones", data=df_actualizado)
-                            st.success(f"✅ Cotización guardada en tu cuenta con Folio {folio}")
-                        except Exception as e:
-                            st.error(f"Error al guardar: {e}")
+                # Guardado por Webhook
+                if st.button("💾 Guardar en mi Historial", use_container_width=True):
+                    folio = f"COT-{datetime.datetime.now().strftime('%y%m%d%H%M')}"
+                    datos_a_guardar = {
+                        "id_empresa": user_email,
+                        "Folio": folio,
+                        "Fecha": datetime.date.today().strftime("%Y-%m-%d"),
+                        "Cliente": cliente_nombre.strip(),
+                        "Telefono": cliente_telefono.strip(),
+                        "Total": total_cotizacion,
+                        "Conceptos": " | ".join([f"{it['Concepto']} ({it['Cantidad']})" for _, it in df_items.iterrows()]),
+                        "Vigencia_Dias": vigencia_dias,
+                        "Fecha_Seguimiento": fecha_seg.strftime("%Y-%m-%d"),
+                        "Estatus": "Pendiente",
+                        "Notas": notas_adicionales.strip()
+                    }
+                    guardado = guardar_cotizacion_api(datos_a_guardar)
+                    if guardado:
+                        st.success(f"✅ Cotización guardada con Folio {folio}")
+                    else:
+                        st.error("Error al guardar la cotización.")
             else:
                 st.caption("Ingresa el nombre del cliente y al menos un concepto para habilitar la descarga del PDF y WhatsApp.")
 
-    # --- PANTALLA 2: HISTORIAL PRIVADO ---
+    # --- HISTORIAL PRIVADO ---
     elif menu == "📊 Mis Cotizaciones":
         st.title(f"📊 Historial de Cotizaciones - {empresa_data.get('nombre', 'Mi Empresa')}")
-        if conn:
-            try:
-                df_todas = conn.read(spreadsheet=SHEET_URL, worksheet="Cotizaciones", ttl="0m")
-                
-                if not df_todas.empty and "id_empresa" in df_todas.columns:
-                    df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
-                    
-                    if not df_mis_cotizaciones.empty:
-                        col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-                        with col_kpi1:
-                            st.metric("Total Cotizado", f"${df_mis_cotizaciones['Total'].sum():,.2f} MXN")
-                        with col_kpi2:
-                            st.metric("Cotizaciones Totales", len(df_mis_cotizaciones))
-                        with col_kpi3:
-                            pendientes = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"] == "Pendiente"])
-                            st.metric("Cotizaciones Pendientes", pendientes)
+        df_todas = obtener_cotizaciones()
+        
+        if not df_todas.empty and "id_empresa" in df_todas.columns:
+            df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
+            
+            if not df_mis_cotizaciones.empty:
+                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+                with col_kpi1:
+                    total_sum = pd.to_numeric(df_mis_cotizaciones['Total'], errors='coerce').sum()
+                    st.metric("Total Cotizado", f"${total_sum:,.2f} MXN")
+                with col_kpi2:
+                    st.metric("Cotizaciones Totales", len(df_mis_cotizaciones))
+                with col_kpi3:
+                    pendientes = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"] == "Pendiente"])
+                    st.metric("Cotizaciones Pendientes", pendientes)
 
-                        st.subheader("Listado de Cotizaciones")
-                        cols_mostrar = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
-                        st.dataframe(df_mis_cotizaciones[cols_mostrar], use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Aún no tienes cotizaciones guardadas en tu cuenta.")
-                else:
-                    st.info("No hay registros disponibles en la base de datos.")
-            except Exception as e:
-                st.error(f"Error al leer el historial: {e}")
+                st.subheader("Listado de Cotizaciones")
+                cols_mostrar = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
+                st.dataframe(df_mis_cotizaciones[cols_mostrar], use_container_width=True, hide_index=True)
+            else:
+                st.info("Aún no tienes cotizaciones guardadas en tu cuenta.")
         else:
-            st.warning("Conecta tu hoja de Google Sheets para consultar el historial.")
+            st.info("Aún no hay cotizaciones registradas.")
