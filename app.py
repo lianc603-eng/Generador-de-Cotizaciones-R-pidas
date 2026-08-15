@@ -6,6 +6,9 @@ import urllib.parse
 import hashlib
 from streamlit_gsheets import GSheetsConnection
 
+# --- URL Directa de tu Google Sheet ---
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1tbTxrjmH1DVFOfhgSJeCGp18T_Cf4zQrqWNgqMh36Zw/edit"
+
 # --- Configuración de Página ---
 st.set_page_config(page_title="Cotizador PyME Pro", page_icon="🏢", layout="wide")
 
@@ -155,7 +158,7 @@ def link_google_calendar(titulo, descripcion, fecha_seguimiento):
     return f"https://calendar.google.com/calendar/render?{urllib.parse.urlencode(params)}"
 
 # ==============================================================================
-# VISTA: PANTALLA DE ACCESO Y REGISTRO (MULTI-TENANT)
+# VISTA: ACCESO Y REGISTRO
 # ==============================================================================
 if not st.session_state["autenticado"]:
     st.title("🔒 Portal de Cotizaciones PyME")
@@ -174,7 +177,7 @@ if not st.session_state["autenticado"]:
                     st.error("Por favor completa todos los campos.")
                 elif conn:
                     try:
-                        df_users = conn.read(worksheet="Usuarios", ttl="0m")
+                        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Usuarios", ttl="0m")
                         if not df_users.empty and "email" in df_users.columns:
                             pass_hashed = hash_password(pass_login)
                             usuario_match = df_users[(df_users["email"].str.lower() == correo_login) & (df_users["password"] == pass_hashed)]
@@ -193,11 +196,9 @@ if not st.session_state["autenticado"]:
                             else:
                                 st.error("Correo o contraseña incorrectos.")
                         else:
-                            st.warning("No hay base de usuarios configurada. Regístrate en la siguiente pestaña.")
+                            st.warning("No hay usuarios registrados aún. Crea tu cuenta en la pestaña 'Registrar mi Negocio'.")
                     except Exception as e:
                         st.error(f"Error al conectar con la base de datos: {e}")
-                else:
-                    st.error("Configura los secretos de Google Sheets en Streamlit Cloud.")
 
     with tab_registro:
         with st.form("form_reg"):
@@ -212,7 +213,7 @@ if not st.session_state["autenticado"]:
                     st.error("Todos los campos obligatorios deben completarse.")
                 elif conn:
                     try:
-                        df_users = conn.read(worksheet="Usuarios", ttl="0m")
+                        df_users = conn.read(spreadsheet=SHEET_URL, worksheet="Usuarios", ttl="0m")
                         if not df_users.empty and "email" in df_users.columns and reg_email in df_users["email"].str.lower().values:
                             st.warning("Este correo ya se encuentra registrado. Inicia sesión.")
                         else:
@@ -223,24 +224,22 @@ if not st.session_state["autenticado"]:
                                 "telefono": reg_tel.strip(),
                                 "plan": "Free"
                             }])
-                            # Anexar a la hoja de Usuarios
                             if df_users.empty:
                                 df_actualizado = nuevo_usuario
                             else:
                                 df_actualizado = pd.concat([df_users, nuevo_usuario], ignore_index=True)
-                            conn.update(worksheet="Usuarios", data=df_actualizado)
+                            conn.update(spreadsheet=SHEET_URL, worksheet="Usuarios", data=df_actualizado)
                             st.success("¡Negocio registrado con éxito! Ya puedes iniciar sesión.")
                     except Exception as e:
                         st.error(f"Error en el registro: {e}")
 
 # ==============================================================================
-# VISTA: PANEL PRIVADO DEL USUARIO AUTENTICADO
+# VISTA: PANEL PRIVADO DEL USUARIO
 # ==============================================================================
 else:
     user_email = st.session_state["usuario_actual"]
     empresa_data = st.session_state["datos_empresa"]
 
-    # Barra lateral con perfil del cliente y cierre de sesión
     with st.sidebar:
         st.markdown(f"### 🏢 **{empresa_data.get('nombre', 'Mi Empresa')}**")
         st.caption(f"👤 Usuario: {user_email}")
@@ -396,7 +395,7 @@ else:
                         try:
                             folio = f"COT-{datetime.datetime.now().strftime('%y%m%d%H%M')}"
                             nueva_fila = pd.DataFrame([{
-                                "id_empresa": user_email,  # <--- AISLAMIENTO DE DATOS
+                                "id_empresa": user_email,
                                 "Folio": folio,
                                 "Fecha": datetime.date.today().strftime("%Y-%m-%d"),
                                 "Cliente": cliente_nombre.strip(),
@@ -409,27 +408,26 @@ else:
                                 "Notas": notas_adicionales.strip()
                             }])
                             
-                            df_actual = conn.read(worksheet="Cotizaciones", ttl="0m")
+                            df_actual = conn.read(spreadsheet=SHEET_URL, worksheet="Cotizaciones", ttl="0m")
                             if df_actual.empty:
                                 df_actualizado = nueva_fila
                             else:
                                 df_actualizado = pd.concat([df_actual, nueva_fila], ignore_index=True)
                             
-                            conn.update(worksheet="Cotizaciones", data=df_actualizado)
+                            conn.update(spreadsheet=SHEET_URL, worksheet="Cotizaciones", data=df_actualizado)
                             st.success(f"✅ Cotización guardada en tu cuenta con Folio {folio}")
                         except Exception as e:
                             st.error(f"Error al guardar: {e}")
             else:
                 st.caption("Ingresa el nombre del cliente y al menos un concepto para habilitar la descarga del PDF y WhatsApp.")
 
-    # --- PANTALLA 2: HISTORIAL PRIVADO DEL CLIENTE ---
+    # --- PANTALLA 2: HISTORIAL PRIVADO ---
     elif menu == "📊 Mis Cotizaciones":
         st.title(f"📊 Historial de Cotizaciones - {empresa_data.get('nombre', 'Mi Empresa')}")
         if conn:
             try:
-                df_todas = conn.read(worksheet="Cotizaciones", ttl="0m")
+                df_todas = conn.read(spreadsheet=SHEET_URL, worksheet="Cotizaciones", ttl="0m")
                 
-                # Candado de filtrado estricto por usuario
                 if not df_todas.empty and "id_empresa" in df_todas.columns:
                     df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
                     
