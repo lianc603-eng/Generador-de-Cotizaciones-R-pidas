@@ -18,7 +18,7 @@ if "items" not in st.session_state or not isinstance(st.session_state["items"], 
 class PDFCotizacion(FPDF):
     def __init__(self, emisor_nombre, emisor_tel):
         super().__init__()
-        self.emisor_nombre = str(emisor_nombre) if emisor_nombre else "Mi Empresa"
+        self.emisor_nombre = str(emisor_nombre) if emisor_nombre else "Empresa / Emisor"
         self.emisor_tel = str(emisor_tel) if emisor_tel else ""
 
     def header(self):
@@ -27,7 +27,8 @@ class PDFCotizacion(FPDF):
         self.cell(0, 7, self.emisor_nombre.upper(), new_x="LMARGIN", new_y="NEXT", align="L")
         self.set_font("Helvetica", "", 9)
         self.set_text_color(100, 116, 139)
-        self.cell(0, 5, f"Contacto / Tel: {self.emisor_tel}", new_x="LMARGIN", new_y="NEXT", align="L")
+        if self.emisor_tel:
+            self.cell(0, 5, f"Contacto / Tel: {self.emisor_tel}", new_x="LMARGIN", new_y="NEXT", align="L")
         self.ln(3)
         self.set_draw_color(226, 232, 240)
         self.line(10, self.get_y(), 200, self.get_y())
@@ -145,13 +146,13 @@ col_emisor, col_cliente = st.columns(2)
 
 with col_emisor:
     st.subheader("🏢 Datos de tu Empresa")
-    mi_empresa = st.text_input("Nombre de tu Negocio / Marca", value="Mi Empresa")
-    mi_telefono = st.text_input("Tu Teléfono de Contacto", value="9811234567")
+    mi_empresa = st.text_input("Nombre de tu Negocio / Marca", placeholder="Ej. Mi Negocio / Estudio Creativo")
+    mi_telefono = st.text_input("Tu Teléfono de Contacto", placeholder="Ej. 9811234567")
 
 with col_cliente:
     st.subheader("👤 Datos del Cliente")
-    cliente_nombre = st.text_input("Nombre del Cliente o Empresa")
-    cliente_telefono = st.text_input("Teléfono del Cliente (10 dígitos)", placeholder="9810000000")
+    cliente_nombre = st.text_input("Nombre del Cliente o Empresa", placeholder="Ej. Juan Pérez")
+    cliente_telefono = st.text_input("Teléfono del Cliente (10 dígitos)", placeholder="Ej. 9811064023")
 
 st.divider()
 
@@ -162,73 +163,76 @@ tab_servicio, tab_producto = st.tabs(["💼 Servicios", "📦 Productos"])
 # --- TAB SERVICIOS ---
 with tab_servicio:
     st.caption("Cotiza asesorías, desarrollos, sesiones, proyectos, mano de obra o mantenimientos.")
-    col_s1, col_s2, col_s3, col_s4 = st.columns([3, 1.2, 1.2, 1])
-    with col_s1:
-        serv_nombre = st.text_input("Nombre del Servicio", placeholder="Ej. Gestión de Redes / Sesión de Fotos")
-    with col_s2:
-        serv_unidad = st.selectbox("Unidad", ["Servicio", "Hora", "Proyecto", "Mes", "Evento"])
-    with col_s3:
-        serv_cant = st.number_input("Cantidad ", min_value=1.0, value=1.0, step=1.0, key="s_cant")
-    with col_s4:
-        serv_precio = st.number_input("Precio ($)", min_value=0.0, value=0.0, step=100.0, key="s_precio")
-    
-    serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Incluye entregables, revisiones y reportes.", key="s_det")
-    
-    if st.button("➕ Agregar Servicio", use_container_width=True):
-        if serv_nombre.strip():
-            st.session_state["items"].append({
-                "Tipo": str(serv_unidad),
-                "Concepto": serv_nombre.strip(),
-                "Detalle": serv_detalle.strip(),
-                "Cantidad": float(serv_cant),
-                "P. Unitario": float(serv_precio),
-                "Importe": float(serv_cant * serv_precio)
-            })
-            st.rerun()
-        else:
-            st.warning("Escribe el nombre del servicio antes de agregar.")
+    with st.form("form_servicio", clear_on_submit=True):
+        col_s1, col_s2, col_s3, col_s4 = st.columns([3, 1.2, 1.2, 1])
+        with col_s1:
+            serv_nombre = st.text_input("Nombre del Servicio", placeholder="Ej. Paquete 1 XV Años / Gestión de Redes")
+        with col_s2:
+            serv_unidad = st.selectbox("Unidad", ["Servicio", "Hora", "Proyecto", "Mes", "Evento", "Sesión"])
+        with col_s3:
+            serv_cant = st.number_input("Cantidad", min_value=1.0, value=1.0, step=1.0)
+        with col_s4:
+            serv_precio = st.number_input("Precio ($)", min_value=0.0, value=0.0, step=100.0)
+        
+        serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Incluye cobertura de 5 horas, entrega digital de fotografías editadas y galería privada.")
+        
+        submit_servicio = st.form_submit_button("➕ Agregar Servicio", use_container_width=True)
+        if submit_servicio:
+            if serv_nombre.strip():
+                st.session_state["items"].append({
+                    "Tipo": str(serv_unidad),
+                    "Concepto": serv_nombre.strip(),
+                    "Detalle": serv_detalle.strip(),
+                    "Cantidad": float(serv_cant),
+                    "P. Unitario": float(serv_precio),
+                    "Importe": float(serv_cant * serv_precio)
+                })
+                st.rerun()
+            else:
+                st.warning("Escribe el nombre del servicio antes de agregar.")
 
 # --- TAB PRODUCTOS ---
 with tab_producto:
     st.caption("Cotiza artículos físicos, suministros, piezas, paquetes o materiales.")
-    col_p1, col_p2, col_p3, col_p4 = st.columns([3, 1.2, 1.2, 1])
-    with col_p1:
-        prod_nombre = st.text_input("Nombre del Producto", placeholder="Ej. Cuadro Canvas / Kit de Accesorios")
-    with col_p2:
-        prod_unidad = st.selectbox("Presentación", ["Pieza", "Kit", "Paquete", "Caja", "Metro", "Lote"])
-    with col_p3:
-        prod_cant = st.number_input("Cantidad", min_value=1.0, value=1.0, step=1.0, key="p_cant")
-    with col_p4:
-        prod_precio = st.number_input("Precio Unitario ($)", min_value=0.0, value=0.0, step=50.0, key="p_precio")
-    
-    prod_detalle = st.text_area("Especificaciones o contenido del producto (Opcional)", placeholder="Ej. Materiales, dimensiones o acabados.", key="p_det")
-    
-    if st.button("➕ Agregar Producto", use_container_width=True):
-        if prod_nombre.strip():
-            st.session_state["items"].append({
-                "Tipo": str(prod_unidad),
-                "Concepto": prod_nombre.strip(),
-                "Detalle": prod_detalle.strip(),
-                "Cantidad": float(prod_cant),
-                "P. Unitario": float(prod_precio),
-                "Importe": float(prod_cant * prod_precio)
-            })
-            st.rerun()
-        else:
-            st.warning("Escribe el nombre del producto antes de agregar.")
+    with st.form("form_producto", clear_on_submit=True):
+        col_p1, col_p2, col_p3, col_p4 = st.columns([3, 1.2, 1.2, 1])
+        with col_p1:
+            prod_nombre = st.text_input("Nombre del Producto", placeholder="Ej. Cuadro Canvas 60x40cm / Kit de Accesorios")
+        with col_p2:
+            prod_unidad = st.selectbox("Presentación", ["Pieza", "Kit", "Paquete", "Caja", "Metro", "Lote"])
+        with col_p3:
+            prod_cant = st.number_input("Cantidad", min_value=1.0, value=1.0, step=1.0)
+        with col_p4:
+            prod_precio = st.number_input("Precio Unitario ($)", min_value=0.0, value=0.0, step=50.0)
+        
+        prod_detalle = st.text_area("Especificaciones o contenido del producto (Opcional)", placeholder="Ej. Impresión fotográfica HD en lienzo canvas montado en bastidor de madera.")
+        
+        submit_producto = st.form_submit_button("➕ Agregar Producto", use_container_width=True)
+        if submit_producto:
+            if prod_nombre.strip():
+                st.session_state["items"].append({
+                    "Tipo": str(prod_unidad),
+                    "Concepto": prod_nombre.strip(),
+                    "Detalle": prod_detalle.strip(),
+                    "Cantidad": float(prod_cant),
+                    "P. Unitario": float(prod_precio),
+                    "Importe": float(prod_cant * prod_precio)
+                })
+                st.rerun()
+            else:
+                st.warning("Escribe el nombre del producto antes de agregar.")
 
 st.divider()
 
 # --- Normalización y Resumen de Datos ---
 lista_actual = st.session_state.get("items", [])
 
-# Asegurar que cada registro tenga las columnas obligatorias
 items_normalizados = []
 if isinstance(lista_actual, list):
     for it in lista_actual:
         if isinstance(it, dict):
             items_normalizados.append({
-                "Tipo": it.get("Tipo", "General"),
+                "Tipo": it.get("Tipo", "Servicio"),
                 "Concepto": it.get("Concepto", ""),
                 "Detalle": it.get("Detalle", ""),
                 "Cantidad": float(it.get("Cantidad", 1.0)),
@@ -244,7 +248,7 @@ if len(items_normalizados) > 0:
     total_cotizacion = float(df_items["Importe"].sum())
     st.metric(label="Total a Cobrar", value=f"${total_cotizacion:,.2f} MXN")
 
-    if st.button("🗑️ Limpiar todos los conceptos"):
+    if st.button("🗑️ Limpiar lista de cotización"):
         st.session_state["items"] = []
         st.rerun()
 else:
@@ -268,7 +272,8 @@ with col_actions:
     st.subheader("🚀 Exportar y Compartir")
     if not df_items.empty and cliente_nombre and cliente_nombre.strip():
         pdf_bytes = generar_pdf(
-            mi_empresa, mi_telefono, cliente_nombre, 
+            mi_empresa if mi_empresa.strip() else "Mi Empresa", 
+            mi_telefono, cliente_nombre, 
             cliente_telefono, df_items, total_cotizacion, 
             vigencia_dias, notas_adicionales
         )
@@ -282,18 +287,19 @@ with col_actions:
             use_container_width=True
         )
 
-        # Enlace a WhatsApp con desglose
+        # Enlace a WhatsApp con desglose estructurado
         resumen_lineas = []
         for _, item in df_items.iterrows():
             resumen_lineas.append(f"• *{item['Concepto']}* ({item['Cantidad']:.0f} {item['Tipo']}) -> ${item['Importe']:,.2f}")
         resumen_texto = "\n".join(resumen_lineas)
 
+        nombre_negocio = mi_empresa.strip() if mi_empresa.strip() else "nosotros"
         mensaje_wa = (
-            f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{mi_empresa}*:\n\n"
+            f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{nombre_negocio}*:\n\n"
             f"{resumen_texto}\n\n"
             f"💰 *TOTAL:* ${total_cotizacion:,.2f} MXN\n"
             f"⏳ *Vigencia:* {vigencia_dias} días.\n\n"
-            f"Quedo a tu disposición si deseas confirmar o ajustar algún detalle."
+            f"Quedo a tu disposición si deseas confirmar o realizar algún ajuste."
         )
         mensaje_encoded = urllib.parse.quote(mensaje_wa)
         tel_formateado = "".join(filter(str.isdigit, cliente_telefono))
@@ -301,4 +307,4 @@ with col_actions:
 
         st.link_button("📲 Enviar Resumen por WhatsApp", wa_url, use_container_width=True)
     else:
-        st.caption("Completa los datos del cliente y agrega al menos un concepto para habilitar la descarga del PDF y el botón de WhatsApp.")
+        st.caption("Ingresa el nombre del cliente y agrega al menos un concepto para habilitar la descarga del PDF y el botón de WhatsApp.")
