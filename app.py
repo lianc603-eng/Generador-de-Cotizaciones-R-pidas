@@ -6,6 +6,8 @@ import urllib.parse
 import hashlib
 import requests
 import json
+import os
+import tempfile
 
 # --- URL de Google Apps Script Webhook ---
 API_URL = "https://script.google.com/macros/s/AKfycbywyo3MzZpjpgx7W98nsjAsKHinQoi8RumnKUKikCqyRjqLyPmJybxevmRriF0PDrtWWw/exec"
@@ -14,11 +16,12 @@ API_URL = "https://script.google.com/macros/s/AKfycbywyo3MzZpjpgx7W98nsjAsKHinQo
 st.set_page_config(page_title="Cotizador PyME Pro", page_icon="🏢", layout="wide")
 
 COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]
+LIMITE_FREE_MENSUAL = 3
 
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-# --- Funciones de Conexión Segura con Google Sheets ---
+# --- Funciones de Conexión con Google Sheets ---
 def obtener_usuarios():
     try:
         res = requests.get(f"{API_URL}?action=get_users", timeout=15, allow_redirects=True)
@@ -85,22 +88,37 @@ if "autenticado" not in st.session_state:
 if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
     st.session_state["items"] = []
 
-# --- Clase de Generación PDF ---
+# --- Clase de Generación PDF Profesional ---
 class PDFCotizacion(FPDF):
-    def __init__(self, emisor_nombre, emisor_tel):
+    def __init__(self, emisor_nombre, emisor_tel, es_pro=False, logo_path=None):
         super().__init__()
         self.emisor_nombre = str(emisor_nombre) if emisor_nombre else "Empresa / Emisor"
         self.emisor_tel = str(emisor_tel) if emisor_tel else ""
+        self.es_pro = es_pro
+        self.logo_path = logo_path
 
     def header(self):
+        if self.es_pro and self.logo_path and os.path.exists(self.logo_path):
+            try:
+                self.image(self.logo_path, x=10, y=10, w=28)
+                self.set_xy(42, 10)
+            except Exception:
+                self.set_xy(10, 10)
+        else:
+            self.set_xy(10, 10)
+
         self.set_font("Helvetica", "B", 15)
         self.set_text_color(30, 41, 59)
         self.cell(0, 7, self.emisor_nombre.upper(), new_x="LMARGIN", new_y="NEXT", align="L")
+        
+        if self.es_pro and self.logo_path:
+            self.set_x(42)
+            
         self.set_font("Helvetica", "", 9)
         self.set_text_color(100, 116, 139)
         if self.emisor_tel:
             self.cell(0, 5, f"Contacto / Tel: {self.emisor_tel}", new_x="LMARGIN", new_y="NEXT", align="L")
-        self.ln(3)
+        self.ln(5)
         self.set_draw_color(226, 232, 240)
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(5)
@@ -109,7 +127,10 @@ class PDFCotizacion(FPDF):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(148, 163, 184)
-        self.cell(0, 10, "Documento emitido sin validez fiscal directa - Cotizador PyME Pro", align="C")
+        if not self.es_pro:
+            self.cell(0, 10, "Documento emitido sin validez fiscal - Generado con Cotizador PyME Free", align="C")
+        else:
+            self.cell(0, 10, "Documento oficial de cotización - Gracias por su preferencia", align="C")
 
 def sanitizar_texto(texto):
     if not texto:
@@ -119,8 +140,8 @@ def sanitizar_texto(texto):
         texto = texto.replace(orig, rep)
     return str(texto).encode("latin-1", "replace").decode("latin-1")
 
-def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vigencia, notas):
-    pdf = PDFCotizacion(empresa, emisor_tel)
+def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vigencia, notas, es_pro=False, logo_path=None):
+    pdf = PDFCotizacion(empresa, emisor_tel, es_pro, logo_path)
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
@@ -276,13 +297,35 @@ if not st.session_state["autenticado"]:
 else:
     user_email = st.session_state["usuario_actual"]
     empresa_data = st.session_state["datos_empresa"]
+    
+    # Determinar si el usuario es PRO
+    es_pro = str(empresa_data.get("plan", "Free")).strip().upper() == "PRO"
 
+    # Obtener historial para calcular consumo mensual
+    df_todas = obtener_cotizaciones()
+    df_mis_cotizaciones = pd.DataFrame()
+    cotizaciones_mes_actual = 0
+    mes_actual_str = datetime.date.today().strftime("%Y-%m")
+
+    if not df_todas.empty and "id_empresa" in df_todas.columns:
+        df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
+        if not df_mis_cotizaciones.empty and "Fecha" in df_mis_cotizaciones.columns:
+            cotizaciones_mes_actual = len(df_mis_cotizaciones[df_mis_cotizaciones["Fecha"].astype(str).str.startswith(mes_actual_str)])
+
+    # Barra lateral con perfil y estado del plan
     with st.sidebar:
         st.markdown(f"### 🏢 **{empresa_data.get('nombre', 'Mi Empresa')}**")
         st.caption(f"👤 Usuario: {user_email}")
-        st.caption(f"⭐ Plan: {empresa_data.get('plan', 'Free')}")
+        
+        if es_pro:
+            st.success("⭐ **Plan: PRO (Ilimitado)**")
+        else:
+            st.info(f"🏷️ **Plan: FREE** ({cotizaciones_mes_actual} / {LIMITE_FREE_MENSUAL} este mes)")
+            if cotizaciones_mes_actual >= LIMITE_FREE_MENSUAL:
+                st.warning("⚠️ Límite mensual alcanzado")
+            
         st.divider()
-        menu = st.radio("Secciones", ["📝 Nueva Cotización", "📊 Mis Cotizaciones"])
+        menu = st.radio("Secciones", ["📝 Nueva Cotización", "📊 Mis Cotizaciones", "⭐ Plan Pro"])
         st.divider()
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
             st.session_state["autenticado"] = False
@@ -294,12 +337,38 @@ else:
     # --- PANTALLA 1: NUEVA COTIZACIÓN ---
     if menu == "📝 Nueva Cotización":
         st.title("📄 Generar Cotización")
-        
+
+        # BLOQUEO POR LÍMITE MENSUAL PARA CUENTAS FREE
+        if not es_pro and cotizaciones_mes_actual >= LIMITE_FREE_MENSUAL:
+            st.error(f"🚫 **Has alcanzado el límite de {LIMITE_FREE_MENSUAL} cotizaciones gratuitas de este mes.**")
+            st.info("Para continuar generando cotizaciones de manera ilimitada y desbloquear la subida de tu logotipo oficial, actualiza al **Plan Pro**.")
+            st.divider()
+            col_b1, col_b2 = st.columns([1, 2])
+            with col_b1:
+                st.metric("Consumo del mes", f"{cotizaciones_mes_actual} / {LIMITE_FREE_MENSUAL}")
+            with col_b2:
+                st.write("### Beneficios de activar el Plan Pro:")
+                st.markdown("- **Cotizaciones ilimitadas** cada mes\n- **Subida de tu propio Logotipo oficial** en el PDF\n- **Sin marcas de agua** promocionales\n- Soporte prioritario")
+            st.stop()
+
         col_emisor, col_cliente = st.columns(2)
         with col_emisor:
             st.subheader("🏢 Datos de tu Empresa")
             mi_empresa = st.text_input("Nombre del Negocio", value=empresa_data.get("nombre", ""))
             mi_telefono = st.text_input("Teléfono del Negocio", value=empresa_data.get("telefono", ""))
+            
+            # Subida de logo exclusiva para usuarios PRO
+            temp_logo_path = None
+            if es_pro:
+                logo_file = st.file_uploader("Subir Logo de tu Empresa (PNG/JPG)", type=["png", "jpg", "jpeg"])
+                if logo_file:
+                    temp_dir = tempfile.gettempdir()
+                    temp_logo_path = os.path.join(temp_dir, f"logo_{user_email.replace('@','_')}.png")
+                    with open(temp_logo_path, "wb") as f:
+                        f.write(logo_file.getbuffer())
+                    st.caption("✅ Logotipo listo para incluirse en el PDF.")
+            else:
+                st.caption("🔒 *Desbloquea la subida de tu logotipo oficial en la versión Pro.*")
 
         with col_cliente:
             st.subheader("👤 Datos del Cliente")
@@ -398,7 +467,8 @@ else:
                 pdf_bytes = generar_pdf(
                     mi_empresa if mi_empresa.strip() else "Mi Empresa", 
                     mi_telefono, cliente_nombre, cliente_telefono, 
-                    df_items, total_cotizacion, vigencia_dias, notas_adicionales
+                    df_items, total_cotizacion, vigencia_dias, notas_adicionales,
+                    es_pro=es_pro, logo_path=temp_logo_path
                 )
                 
                 st.download_button(
@@ -453,26 +523,48 @@ else:
     # --- PANTALLA 2: HISTORIAL PRIVADO ---
     elif menu == "📊 Mis Cotizaciones":
         st.title(f"📊 Historial de Cotizaciones - {empresa_data.get('nombre', 'Mi Empresa')}")
-        df_todas = obtener_cotizaciones()
         
-        if not df_todas.empty and "id_empresa" in df_todas.columns:
-            df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
-            
-            if not df_mis_cotizaciones.empty:
-                col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-                with col_kpi1:
-                    total_sum = pd.to_numeric(df_mis_cotizaciones['Total'], errors='coerce').sum()
-                    st.metric("Total Cotizado", f"${total_sum:,.2f} MXN")
-                with col_kpi2:
-                    st.metric("Cotizaciones Totales", len(df_mis_cotizaciones))
-                with col_kpi3:
-                    pendientes = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"] == "Pendiente"])
-                    st.metric("Cotizaciones Pendientes", pendientes)
+        if not df_mis_cotizaciones.empty:
+            col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+            with col_kpi1:
+                total_sum = pd.to_numeric(df_mis_cotizaciones['Total'], errors='coerce').sum()
+                st.metric("Total Cotizado", f"${total_sum:,.2f} MXN")
+            with col_kpi2:
+                st.metric("Cotizaciones Totales", len(df_mis_cotizaciones))
+            with col_kpi3:
+                pendientes = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"] == "Pendiente"])
+                st.metric("Cotizaciones Pendientes", pendientes)
 
-                st.subheader("Listado de Cotizaciones")
-                cols_mostrar = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
-                st.dataframe(df_mis_cotizaciones[cols_mostrar], use_container_width=True, hide_index=True)
-            else:
-                st.info("Aún no tienes cotizaciones guardadas en tu cuenta.")
+            st.subheader("Listado de Cotizaciones")
+            cols_mostrar = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
+            st.dataframe(df_mis_cotizaciones[cols_mostrar], use_container_width=True, hide_index=True)
         else:
-            st.info("Aún no hay cotizaciones registradas.")
+            st.info("Aún no tienes cotizaciones guardadas en tu cuenta.")
+
+    # --- PANTALLA 3: PLAN PRO ---
+    elif menu == "⭐ Plan Pro":
+        st.title("⭐ Potencia tu Negocio con el Plan Pro")
+        st.write("Elimina límites y dale la mejor presentación a tus propuestas comerciales.")
+        
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.markdown("""
+            ### 🟢 Plan Free Actual
+            - Hasta **3 cotizaciones al mes**
+            - Marca de agua en el pie de página
+            - Soporte estándar
+            """)
+        with col_c2:
+            st.markdown("""
+            ### ⭐ Plan Pro ($149 MXN / mes)
+            - **Cotizaciones Ilimitadas**
+            - **Subida de Logotipo propio** en tus PDFs
+            - **Sin marcas de agua**
+            - Agendado de seguimiento en Google Calendar
+            - Historial completo en la nube
+            """)
+
+        st.divider()
+        st.info("💡 Para activar tu Plan Pro, contáctanos directamente o envía tu comprobante de pago.")
+        wa_upgrade = "https://wa.me/529817360428?text=Hola,%20quiero%20activar%20mi%20cuenta%20Pro%20en%20Cotizador%20PyME"
+        st.link_button("📲 Solicitar Activación Pro por WhatsApp", wa_upgrade, use_container_width=True)
