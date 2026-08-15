@@ -7,6 +7,9 @@ import urllib.parse
 # --- Configuración de página ---
 st.set_page_config(page_title="Cotizador PyME Pro", page_icon="📄", layout="wide")
 
+# --- Columnas oficiales requeridas ---
+COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]
+
 # --- Inicialización de Estado ---
 if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
     st.session_state["items"] = []
@@ -40,13 +43,12 @@ def sanitizar_texto(texto):
     """Convierte texto a codificación segura para fuentes estándar FPDF (latin-1)."""
     if not texto:
         return ""
-    # Reemplazos comunes de caracteres que no están en latin-1 básico
     reemplazos = {
         "–": "-", "—": "-", "“": '"', "”": '"', "‘": "'", "’": "'", "•": "*"
     }
     for orig, rep in reemplazos.items():
         texto = texto.replace(orig, rep)
-    return texto.encode("latin-1", "replace").decode("latin-1")
+    return str(texto).encode("latin-1", "replace").decode("latin-1")
 
 def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vigencia, notas):
     pdf = PDFCotizacion(empresa, emisor_tel)
@@ -95,18 +97,16 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
         pdf.cell(30, 6, subtotal, border="LTR", align="R")
         pdf.ln()
 
-        # Fila de detalle/alcance si existe
-        if detalle:
+        # Detalle / Alcance si existe
+        if detalle and detalle != "nan":
             pdf.set_font("Helvetica", "I", 7.5)
             pdf.set_text_color(100, 116, 139)
-            # Guardamos posición previa
             y_start = pdf.get_y()
             pdf.set_x(10)
             pdf.multi_cell(105, 4, f"   Incluye: {detalle}", border="LBR")
             y_end = pdf.get_y()
             h_extra = y_end - y_start
             
-            # Rellenar bordes de columnas laterales
             pdf.set_xy(115, y_start)
             pdf.cell(25, h_extra, "", border="LBR")
             pdf.cell(30, h_extra, "", border="LBR")
@@ -128,7 +128,7 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
     pdf.cell(30, 8, f"${total:,.2f}", border=1, align="R", fill=True)
     pdf.ln(8)
 
-    # Notas / Términos
+    # Notas
     if notas:
         pdf.set_font("Helvetica", "B", 9)
         pdf.cell(0, 5, "Notas y Condiciones de Pago:", new_x="LMARGIN", new_y="NEXT")
@@ -138,7 +138,7 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
 
     return bytes(pdf.output())
 
-# --- Interfaz de la Aplicación ---
+# --- Interfaz Principal ---
 st.title("📄 Cotizador PyME: Productos y Servicios")
 
 col_emisor, col_cliente = st.columns(2)
@@ -164,7 +164,7 @@ with tab_servicio:
     st.caption("Cotiza asesorías, desarrollos, sesiones, proyectos, mano de obra o mantenimientos.")
     col_s1, col_s2, col_s3, col_s4 = st.columns([3, 1.2, 1.2, 1])
     with col_s1:
-        serv_nombre = st.text_input("Nombre del Servicio", placeholder="Ej. Gestión de Redes Sociales / Sesión Fotográfica")
+        serv_nombre = st.text_input("Nombre del Servicio", placeholder="Ej. Gestión de Redes / Sesión de Fotos")
     with col_s2:
         serv_unidad = st.selectbox("Unidad", ["Servicio", "Hora", "Proyecto", "Mes", "Evento"])
     with col_s3:
@@ -172,12 +172,12 @@ with tab_servicio:
     with col_s4:
         serv_precio = st.number_input("Precio ($)", min_value=0.0, value=0.0, step=100.0, key="s_precio")
     
-    serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Incluye 12 publicaciones mensuales, 4 reels editados y reporte de métricas.", key="s_det")
+    serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Incluye entregables, revisiones y reportes.", key="s_det")
     
     if st.button("➕ Agregar Servicio", use_container_width=True):
         if serv_nombre.strip():
             st.session_state["items"].append({
-                "Tipo": f"{serv_unidad}",
+                "Tipo": str(serv_unidad),
                 "Concepto": serv_nombre.strip(),
                 "Detalle": serv_detalle.strip(),
                 "Cantidad": float(serv_cant),
@@ -193,7 +193,7 @@ with tab_producto:
     st.caption("Cotiza artículos físicos, suministros, piezas, paquetes o materiales.")
     col_p1, col_p2, col_p3, col_p4 = st.columns([3, 1.2, 1.2, 1])
     with col_p1:
-        prod_nombre = st.text_input("Nombre del Producto", placeholder="Ej. Cuadro Fotográfico Canvas 60x40cm / Kit de Accesorios")
+        prod_nombre = st.text_input("Nombre del Producto", placeholder="Ej. Cuadro Canvas / Kit de Accesorios")
     with col_p2:
         prod_unidad = st.selectbox("Presentación", ["Pieza", "Kit", "Paquete", "Caja", "Metro", "Lote"])
     with col_p3:
@@ -201,12 +201,12 @@ with tab_producto:
     with col_p4:
         prod_precio = st.number_input("Precio Unitario ($)", min_value=0.0, value=0.0, step=50.0, key="p_precio")
     
-    prod_detalle = st.text_area("Especificaciones o contenido del producto (Opcional)", placeholder="Ej. Impresión en alta definición, bastidor de madera de pino y barniz protector uv.", key="p_det")
+    prod_detalle = st.text_area("Especificaciones o contenido del producto (Opcional)", placeholder="Ej. Materiales, dimensiones o acabados.", key="p_det")
     
     if st.button("➕ Agregar Producto", use_container_width=True):
         if prod_nombre.strip():
             st.session_state["items"].append({
-                "Tipo": f"{prod_unidad}",
+                "Tipo": str(prod_unidad),
                 "Concepto": prod_nombre.strip(),
                 "Detalle": prod_detalle.strip(),
                 "Cantidad": float(prod_cant),
@@ -219,16 +219,27 @@ with tab_producto:
 
 st.divider()
 
-# --- Tabla de Resumen de Conceptos ---
+# --- Normalización y Resumen de Datos ---
 lista_actual = st.session_state.get("items", [])
 
-if isinstance(lista_actual, list) and len(lista_actual) > 0:
+# Asegurar que cada registro tenga las columnas obligatorias
+items_normalizados = []
+if isinstance(lista_actual, list):
+    for it in lista_actual:
+        if isinstance(it, dict):
+            items_normalizados.append({
+                "Tipo": it.get("Tipo", "General"),
+                "Concepto": it.get("Concepto", ""),
+                "Detalle": it.get("Detalle", ""),
+                "Cantidad": float(it.get("Cantidad", 1.0)),
+                "P. Unitario": float(it.get("P. Unitario", 0.0)),
+                "Importe": float(it.get("Importe", 0.0))
+            })
+
+if len(items_normalizados) > 0:
     st.subheader("📋 Resumen de la Cotización")
-    df_items = pd.DataFrame(lista_actual)
-    
-    # Vista organizada para la tabla
-    df_display = df_items[["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]]
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
+    df_items = pd.DataFrame(items_normalizados)
+    st.dataframe(df_items[COLUMNAS_BASE], use_container_width=True, hide_index=True)
     
     total_cotizacion = float(df_items["Importe"].sum())
     st.metric(label="Total a Cobrar", value=f"${total_cotizacion:,.2f} MXN")
@@ -237,7 +248,7 @@ if isinstance(lista_actual, list) and len(lista_actual) > 0:
         st.session_state["items"] = []
         st.rerun()
 else:
-    df_items = pd.DataFrame(columns=["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"])
+    df_items = pd.DataFrame(columns=COLUMNAS_BASE)
     total_cotizacion = 0.0
     st.info("Aún no has agregado servicios o productos a la cotización.")
 
@@ -271,10 +282,10 @@ with col_actions:
             use_container_width=True
         )
 
-        # Enlace a WhatsApp con desglose de ítems
+        # Enlace a WhatsApp con desglose
         resumen_lineas = []
         for _, item in df_items.iterrows():
-            resumen_lineas.append(f"• *{item['Concepto']}* ({item['Cantidad']} {item['Tipo']}) -> ${item['Importe']:,.2f}")
+            resumen_lineas.append(f"• *{item['Concepto']}* ({item['Cantidad']:.0f} {item['Tipo']}) -> ${item['Importe']:,.2f}")
         resumen_texto = "\n".join(resumen_lineas)
 
         mensaje_wa = (
