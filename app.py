@@ -18,7 +18,7 @@ st.set_page_config(page_title="Cotizador PyME Pro", page_icon="🏢", layout="wi
 COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]
 LIMITE_FREE_MENSUAL = 3
 DIAS_PRUEBA_GRATIS = 3
-MAX_NEGOCIOS_PRO = 3  # <-- Límite de hasta 3 negocios
+MAX_NEGOCIOS_PRO = 3
 
 LISTA_BANCOS_MX = [
     "ACTINVER", "AFIRME", "albo", "ARCUS FI", "ASP INTEGRA OPC", "AZTECA", "BaBien", 
@@ -521,7 +521,7 @@ else:
 
     if plan_raw in ["PRO", "MULTI", "PRO_MULTI"]:
         es_pro = True
-        estado_plan_texto = f"⭐ Plan PRO Activo (Hasta {MAX_NEGOCIOS_PRO} Negocios)"
+        estado_plan_texto = f"⭐ Plan PRO ($220/mes - Hasta {MAX_NEGOCIOS_PRO} Negocios)"
     elif plan_raw == "TRIAL" and dias_restantes_trial > 0:
         es_pro = True
         estado_plan_texto = f"🎁 Prueba Pro ({dias_restantes_trial} días restantes)"
@@ -828,7 +828,7 @@ else:
     # --- PANTALLA 2: ADMINISTRAR MIS NEGOCIOS (HASTA 3 EN PRO) ---
     elif menu == "🏢 Mis Negocios (Hasta 3)":
         st.title("🏢 Gestión de Mis Marcas y Negocios")
-        st.caption(f"El **Plan Pro** te permite operar hasta **{MAX_NEGOCIOS_PRO} marcas o negocios independientes** bajo la misma cuenta.")
+        st.caption(f"El **Plan Pro ($220 MXN/mes)** te permite operar hasta **{MAX_NEGOCIOS_PRO} marcas o negocios independientes** bajo la misma cuenta.")
 
         if not es_pro:
             st.warning(f"🔒 La gestión de múltiples marcas está disponible en el **Plan Pro** y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
