@@ -17,12 +17,12 @@ st.set_page_config(page_title="Cotizador PyME Pro", page_icon="🏢", layout="wi
 
 COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Importe"]
 LIMITE_FREE_MENSUAL = 3
-DIAS_PRUEBA_GRATIS = 3  # <-- 3 días de prueba gratis Pro
+DIAS_PRUEBA_GRATIS = 3
 
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-# --- Funciones de Conexión con Google Sheets ---
+# --- Funciones de Comunicación con la Base de Datos ---
 def obtener_usuarios():
     try:
         res = requests.get(f"{API_URL}?action=get_users", timeout=15, allow_redirects=True)
@@ -42,7 +42,7 @@ def registrar_usuario_api(email, password_hashed, nombre_empresa, telefono):
             "password": password_hashed,
             "nombre_empresa": nombre_empresa,
             "telefono": telefono,
-            "plan": "Trial",  # Inicia con prueba gratis Pro por 3 días
+            "plan": "Trial",
             "fecha_registro": datetime.date.today().strftime("%Y-%m-%d")
         }
         res = requests.post(
@@ -81,6 +81,76 @@ def guardar_cotizacion_api(data_dict):
     except Exception:
         return False
 
+def actualizar_estatus_api(folio, id_empresa, nuevo_estatus):
+    try:
+        payload = {
+            "action": "update_estatus",
+            "folio": folio,
+            "id_empresa": id_empresa,
+            "nuevo_estatus": nuevo_estatus
+        }
+        res = requests.post(
+            API_URL, 
+            data=json.dumps(payload), 
+            headers={"Content-Type": "text/plain;charset=utf-8"}, 
+            timeout=15, 
+            allow_redirects=True
+        )
+        return "success" in res.text
+    except Exception:
+        return False
+
+def obtener_catalogo_api():
+    try:
+        res = requests.get(f"{API_URL}?action=get_catalogo", timeout=15, allow_redirects=True)
+        data = res.json()
+        if isinstance(data, list) and len(data) > 1:
+            headers = [str(h).strip() for h in data[0]]
+            return pd.DataFrame(data[1:], columns=headers)
+        return pd.DataFrame(columns=["id_empresa", "Tipo", "Nombre", "Unidad", "Precio", "Detalle"])
+    except Exception:
+        return pd.DataFrame(columns=["id_empresa", "Tipo", "Nombre", "Unidad", "Precio", "Detalle"])
+
+def guardar_item_catalogo_api(id_empresa, tipo, nombre, unidad, precio, detalle):
+    try:
+        payload = {
+            "action": "save_item_catalogo",
+            "id_empresa": id_empresa,
+            "Tipo": tipo,
+            "Nombre": nombre,
+            "Unidad": unidad,
+            "Precio": precio,
+            "Detalle": detalle
+        }
+        res = requests.post(
+            API_URL, 
+            data=json.dumps(payload), 
+            headers={"Content-Type": "text/plain;charset=utf-8"}, 
+            timeout=15, 
+            allow_redirects=True
+        )
+        return "success" in res.text
+    except Exception:
+        return False
+
+def eliminar_item_catalogo_api(id_empresa, nombre):
+    try:
+        payload = {
+            "action": "delete_item_catalogo",
+            "id_empresa": id_empresa,
+            "nombre": nombre
+        }
+        res = requests.post(
+            API_URL, 
+            data=json.dumps(payload), 
+            headers={"Content-Type": "text/plain;charset=utf-8"}, 
+            timeout=15, 
+            allow_redirects=True
+        )
+        return "success" in res.text
+    except Exception:
+        return False
+
 # --- Inicialización del Estado de Sesión ---
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -90,9 +160,9 @@ if "autenticado" not in st.session_state:
 if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
     st.session_state["items"] = []
 
-# --- Clase de Generación PDF con Hoja Membretada Personalizable ---
+# --- Clase de Generación PDF Profesional ---
 class PDFCotizacion(FPDF):
-    def __init__(self, emisor_nombre, emisor_tel, es_pro=False, logo_path=None, color_rgb=(30, 41, 59), pie_personalizado=None, logo_align="Izquierda"):
+    def __init__(self, emisor_nombre, emisor_tel, es_pro=False, logo_path=None, color_rgb=(30, 41, 59), pie_personalizado=None, logo_align="Izquierda", datos_banco=None, firma_path=None):
         super().__init__()
         self.emisor_nombre = str(emisor_nombre) if emisor_nombre else "Empresa / Emisor"
         self.emisor_tel = str(emisor_tel) if emisor_tel else ""
@@ -101,6 +171,8 @@ class PDFCotizacion(FPDF):
         self.color_rgb = color_rgb
         self.pie_personalizado = pie_personalizado
         self.logo_align = logo_align
+        self.datos_banco = datos_banco
+        self.firma_path = firma_path
 
     def header(self):
         tiene_logo = self.es_pro and self.logo_path and os.path.exists(self.logo_path)
@@ -162,12 +234,13 @@ def hex_a_rgb(hex_str):
         return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
     return (30, 41, 59)
 
-def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vigencia, notas, es_pro=False, logo_path=None, color_hex="#1e293b", pie_custom="", logo_align="Izquierda"):
+def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, subtotal, descuento_monto, iva_monto, total, vigencia, notas, es_pro=False, logo_path=None, color_hex="#1e293b", pie_custom="", logo_align="Izquierda", datos_banco="", qr_path=None, firma_path=None):
     color_rgb = hex_a_rgb(color_hex)
-    pdf = PDFCotizacion(empresa, emisor_tel, es_pro, logo_path, color_rgb, pie_custom, logo_align)
+    pdf = PDFCotizacion(empresa, emisor_tel, es_pro, logo_path, color_rgb, pie_custom, logo_align, datos_banco, firma_path)
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
+    # Encabezado Cliente
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(*color_rgb)
     pdf.cell(110, 6, sanitizar_texto(f"CLIENTE: {cliente}"))
@@ -180,7 +253,7 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
     pdf.cell(80, 5, f"Válido por: {vigencia} días", new_x="LMARGIN", new_y="NEXT", align="R")
     pdf.ln(5)
 
-    # Cabecera de la Tabla
+    # Cabecera de Tabla
     pdf.set_fill_color(241, 245, 249)
     pdf.set_draw_color(203, 213, 225)
     pdf.set_text_color(*color_rgb)
@@ -196,7 +269,7 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
         concepto = sanitizar_texto(str(row["Concepto"]))
         tipo_unidad = sanitizar_texto(f"{row['Tipo']} ({row['Cantidad']:.2f})")
         p_unit = f"${float(row['P. Unitario']):,.2f}"
-        subtotal = f"${float(row['Importe']):,.2f}"
+        subtotal_row = f"${float(row['Importe']):,.2f}"
         detalle = sanitizar_texto(str(row.get("Detalle", "")).strip())
 
         pdf.set_font("Helvetica", "B", 9)
@@ -206,7 +279,7 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
         pdf.cell(25, 6, tipo_unidad, border="LTR", align="C")
         pdf.cell(30, 6, p_unit, border="LTR", align="R")
         pdf.set_font("Helvetica", "B", 8)
-        pdf.cell(30, 6, subtotal, border="LTR", align="R")
+        pdf.cell(30, 6, subtotal_row, border="LTR", align="R")
         pdf.ln()
 
         if detalle and detalle != "nan":
@@ -230,20 +303,80 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
             pdf.cell(30, 1, "", border="LBR")
             pdf.ln()
 
-    # Total
+    # Totales Desglosados
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(71, 85, 105)
+    
+    if descuento_monto > 0 or iva_monto > 0:
+        pdf.cell(160, 5, "Subtotal: ", border=0, align="R")
+        pdf.cell(30, 5, f"${subtotal:,.2f}", border=0, align="R")
+        pdf.ln()
+        
+        if descuento_monto > 0:
+            pdf.cell(160, 5, "Descuento Comercial: ", border=0, align="R")
+            pdf.cell(30, 5, f"-${descuento_monto:,.2f}", border=0, align="R")
+            pdf.ln()
+            
+        if iva_monto > 0:
+            pdf.cell(160, 5, "I.V.A.: ", border=0, align="R")
+            pdf.cell(30, 5, f"+${iva_monto:,.2f}", border=0, align="R")
+            pdf.ln()
+
     pdf.set_fill_color(248, 250, 252)
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(*color_rgb)
-    pdf.cell(160, 8, "TOTAL: ", border=1, align="R", fill=True)
+    pdf.cell(160, 8, "TOTAL A LIQUIDAR: ", border=1, align="R", fill=True)
     pdf.cell(30, 8, f"${total:,.2f}", border=1, align="R", fill=True)
-    pdf.ln(8)
+    pdf.ln(7)
 
+    # Notas / Condiciones
     if notas:
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(0, 5, "Notas y Condiciones de Pago:", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "B", 8.5)
+        pdf.cell(0, 4, "Notas y Condiciones de Entrega:", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(51, 65, 85)
-        pdf.multi_cell(0, 4, sanitizar_texto(str(notas)))
+        pdf.multi_cell(0, 3.8, sanitizar_texto(str(notas)))
+        pdf.ln(4)
+
+    # Bloque Pro: Datos de Pago Bancario + QR + Firma
+    if es_pro and (datos_banco or firma_path):
+        y_bloque = pdf.get_y()
+        if y_bloque > 230:
+            pdf.add_page()
+            y_bloque = pdf.get_y()
+
+        # Datos Bancarios & QR
+        if datos_banco:
+            pdf.set_fill_color(248, 250, 252)
+            pdf.set_draw_color(226, 232, 240)
+            pdf.rect(10, y_bloque, 125, 28, "DF")
+            
+            pdf.set_xy(13, y_bloque + 2)
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*color_rgb)
+            pdf.cell(85, 4, "INFORMACIÓN PARA PAGO / SPEI:", ln=True)
+            
+            pdf.set_x(13)
+            pdf.set_font("Helvetica", "", 7.5)
+            pdf.set_text_color(51, 65, 85)
+            pdf.multi_cell(85, 3.5, sanitizar_texto(datos_banco))
+            
+            if qr_path and os.path.exists(qr_path):
+                try:
+                    pdf.image(qr_path, x=105, y=y_bloque + 2, w=24)
+                except Exception:
+                    pass
+
+        # Firma Escaneada
+        if firma_path and os.path.exists(firma_path):
+            try:
+                pdf.image(firma_path, x=150, y=y_bloque + 1, w=35)
+                pdf.set_xy(145, y_bloque + 22)
+                pdf.set_font("Helvetica", "I", 7.5)
+                pdf.set_text_color(100, 116, 139)
+                pdf.cell(45, 4, "Firma / Sello de Aprobación", align="C")
+            except Exception:
+                pass
 
     return bytes(pdf.output())
 
@@ -253,12 +386,30 @@ def link_google_calendar(titulo, descripcion, fecha_seguimiento):
     params = {"action": "TEMPLATE", "text": titulo, "details": descripcion, "dates": fechas}
     return f"https://calendar.google.com/calendar/render?{urllib.parse.urlencode(params)}"
 
+def generar_qr_spei(clabe, titular):
+    """Genera imagen QR con los datos bancarios usando la API pública rápida"""
+    if not clabe:
+        return None
+    datos = f"SPEI - Titular: {titular} | CLABE: {clabe}"
+    url_qr = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={urllib.parse.quote(datos)}"
+    try:
+        r = requests.get(url_qr, timeout=5)
+        if r.status_code == 200:
+            temp_dir = tempfile.gettempdir()
+            path_qr = os.path.join(temp_dir, f"qr_{clabe}.png")
+            with open(path_qr, "wb") as f:
+                f.write(r.content)
+            return path_qr
+    except Exception:
+        return None
+    return None
+
 # ==============================================================================
 # VISTA: ACCESO Y REGISTRO
 # ==============================================================================
 if not st.session_state["autenticado"]:
     st.title("🔒 Portal de Cotizaciones PyME")
-    st.caption(f"Inicia sesión o crea tu cuenta para disfrutar de **{DIAS_PRUEBA_GRATIS} días de prueba gratis Pro** sin compromiso.")
+    st.caption(f"Inicia sesión o crea tu cuenta para disfrutar de **{DIAS_PRUEBA_GRATIS} días de prueba gratis Pro**.")
 
     tab_login, tab_registro = st.tabs(["🔑 Iniciar Sesión", f"🎁 Registrar mi Negocio ({DIAS_PRUEBA_GRATIS} Días Gratis)"])
 
@@ -323,7 +474,6 @@ else:
     user_email = st.session_state["usuario_actual"]
     empresa_data = st.session_state["datos_empresa"]
     
-    # Lógica de Evaluación de Plan y Prueba de 3 días
     plan_raw = str(empresa_data.get("plan", "Trial")).strip().upper()
     fecha_reg_str = empresa_data.get("fecha_registro", datetime.date.today().strftime("%Y-%m-%d"))
     
@@ -340,7 +490,7 @@ else:
 
     if plan_raw == "PRO":
         es_pro = True
-        estado_plan_texto = "⭐ Plan PRO Activo (Ilimitado)"
+        estado_plan_texto = "⭐ Plan PRO (Ilimitado)"
     elif plan_raw == "TRIAL" and dias_restantes_trial > 0:
         es_pro = True
         estado_plan_texto = f"🎁 Prueba Pro ({dias_restantes_trial} días restantes)"
@@ -348,7 +498,7 @@ else:
         es_pro = False
         estado_plan_texto = "🏷️ Plan FREE"
 
-    # Consumo del mes actual
+    # Consumo del mes
     df_todas = obtener_cotizaciones()
     df_mis_cotizaciones = pd.DataFrame()
     cotizaciones_mes_actual = 0
@@ -358,6 +508,12 @@ else:
         df_mis_cotizaciones = df_todas[df_todas["id_empresa"].str.lower() == user_email.lower()]
         if not df_mis_cotizaciones.empty and "Fecha" in df_mis_cotizaciones.columns:
             cotizaciones_mes_actual = len(df_mis_cotizaciones[df_mis_cotizaciones["Fecha"].astype(str).str.startswith(mes_actual_str)])
+
+    # Catálogo del usuario
+    df_catalogo_todos = obtener_catalogo_api()
+    df_mi_catalogo = pd.DataFrame()
+    if not df_catalogo_todos.empty and "id_empresa" in df_catalogo_todos.columns:
+        df_mi_catalogo = df_catalogo_todos[df_catalogo_todos["id_empresa"].str.lower() == user_email.lower()]
 
     # Barra lateral
     with st.sidebar:
@@ -372,7 +528,13 @@ else:
                 st.warning("⚠️ Límite mensual alcanzado")
             
         st.divider()
-        menu = st.radio("Secciones", ["📝 Nueva Cotización", "🎨 Diseñar Hoja Membretada", "📊 Mis Cotizaciones", "⭐ Plan Pro"])
+        menu = st.radio("Secciones", [
+            "📝 Nueva Cotización", 
+            "📦 Mi Catálogo Ilimitado",
+            "🎨 Diseñar Hoja Membretada", 
+            "📊 Mis Cotizaciones & CRM", 
+            "⭐ Plan Pro"
+        ])
         st.divider()
         if st.button("🚪 Cerrar Sesión", use_container_width=True):
             st.session_state["autenticado"] = False
@@ -385,17 +547,9 @@ else:
     if menu == "📝 Nueva Cotización":
         st.title("📄 Generar Cotización")
 
-        # Bloqueo si es Free y consumió sus 3 del mes
         if not es_pro and cotizaciones_mes_actual >= LIMITE_FREE_MENSUAL:
             st.error(f"🚫 **Has alcanzado el límite de {LIMITE_FREE_MENSUAL} cotizaciones gratuitas de este mes.**")
-            st.info(f"Tus {DIAS_PRUEBA_GRATIS} días de prueba gratuita han concluido. Para seguir cotizando de manera ilimitada y conservar tu membrete personalizado, actualiza al Plan Pro.")
-            st.divider()
-            col_b1, col_b2 = st.columns([1, 2])
-            with col_b1:
-                st.metric("Consumo mensual", f"{cotizaciones_mes_actual} / {LIMITE_FREE_MENSUAL}")
-            with col_b2:
-                st.write("### Beneficios Plan Pro:")
-                st.markdown("- Cotizaciones Ilimitadas\n- Hoja Membretada con Colores y Logotipo\n- Sin marcas de agua en tus PDFs")
+            st.info(f"Tus {DIAS_PRUEBA_GRATIS} días de prueba gratuita han concluido. Para seguir cotizando sin límites, conservar tu catálogo y hoja membretada, actualiza al Plan Pro.")
             st.stop()
 
         col_emisor, col_cliente = st.columns(2)
@@ -411,7 +565,33 @@ else:
 
         st.divider()
 
-        st.subheader("➕ Agregar a la Cotización")
+        # ATAJO: Autocompletar desde Catálogo Guardado (Exclusivo Pro)
+        if es_pro and not df_mi_catalogo.empty:
+            st.subheader("⚡ Carga Rápida desde tu Catálogo Pro")
+            opciones_cat = ["-- Seleccionar del Catálogo --"] + df_mi_catalogo["Nombre"].tolist()
+            item_sel = st.selectbox("Elige un producto/servicio para agregarlo en 1 clic:", opciones_cat)
+            
+            if item_sel != "-- Seleccionar del Catálogo --":
+                row_sel = df_mi_catalogo[df_mi_catalogo["Nombre"] == item_sel].iloc[0]
+                col_c1, col_c2, col_c3 = st.columns([1, 1, 2])
+                with col_c1:
+                    cant_cat = st.number_input("Cantidad a cotizar", min_value=1.0, value=1.0, step=1.0, key="cant_cat")
+                with col_c2:
+                    st.write("")
+                    st.write("")
+                    if st.button("➕ Insertar a la Cotización", use_container_width=True):
+                        st.session_state["items"].append({
+                            "Tipo": str(row_sel["Unidad"]),
+                            "Concepto": str(row_sel["Nombre"]),
+                            "Detalle": str(row_sel.get("Detalle", "")),
+                            "Cantidad": float(cant_cat),
+                            "P. Unitario": float(row_sel["Precio"]),
+                            "Importe": float(cant_cat * float(row_sel["Precio"]))
+                        })
+                        st.rerun()
+            st.divider()
+
+        st.subheader("➕ Agregar Concepto Manual")
         tab_servicio, tab_producto = st.tabs(["💼 Servicios", "📦 Productos"])
 
         with tab_servicio:
@@ -426,7 +606,7 @@ else:
                 with col_s4:
                     serv_precio = st.number_input("Precio ($)", min_value=0.0, value=0.0, step=100.0)
                 
-                serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Entregables, horas de trabajo o especificaciones.")
+                serv_detalle = st.text_area("¿Qué incluye este servicio? (Opcional)", placeholder="Ej. Entregables, revisiones o especificaciones.")
                 if st.form_submit_button("➕ Agregar Servicio", use_container_width=True):
                     if serv_nombre.strip():
                         st.session_state["items"].append({
@@ -460,6 +640,7 @@ else:
 
         st.divider()
 
+        # Resumen y Cálculos Financieros
         lista_actual = st.session_state.get("items", [])
         items_normalizados = []
         if isinstance(lista_actual, list):
@@ -475,15 +656,31 @@ else:
             st.subheader("📋 Resumen de la Cotización")
             df_items = pd.DataFrame(items_normalizados)
             st.dataframe(df_items[COLUMNAS_BASE], use_container_width=True, hide_index=True)
-            total_cotizacion = float(df_items["Importe"].sum())
-            st.metric(label="Total a Cobrar", value=f"${total_cotizacion:,.2f} MXN")
+            
+            subtotal_bruto = float(df_items["Importe"].sum())
+
+            # Calculadora de Descuentos e IVA (Exclusivo Pro)
+            col_calc1, col_calc2, col_calc3 = st.columns(3)
+            with col_calc1:
+                st.metric("Subtotal de Conceptos", f"${subtotal_bruto:,.2f} MXN")
+            with col_calc2:
+                porcentaje_desc = st.number_input("Descuento Comercial (%)", min_value=0.0, max_value=100.0, value=0.0, step=5.0)
+                monto_descuento = subtotal_bruto * (porcentaje_desc / 100.0)
+            with col_calc3:
+                tipo_iva = st.selectbox("Aplicar Impuesto (I.V.A.)", ["0% (Sin IVA)", "16% (IVA General)", "8% (Frontera)"])
+                tasa_iva = 0.16 if "16%" in tipo_iva else (0.08 if "8%" in tipo_iva else 0.0)
+                base_con_descuento = subtotal_bruto - monto_descuento
+                monto_iva = base_con_descuento * tasa_iva
+
+            total_final = base_con_descuento + monto_iva
+            st.success(f"### 💰 **TOTAL FINAL A COBRAR: ${total_final:,.2f} MXN**")
 
             if st.button("🗑️ Limpiar lista de cotización"):
                 st.session_state["items"] = []
                 st.rerun()
         else:
             df_items = pd.DataFrame(columns=COLUMNAS_BASE)
-            total_cotizacion = 0.0
+            subtotal_bruto, monto_descuento, monto_iva, total_final = 0.0, 0.0, 0.0, 0.0
             st.info("Aún no has agregado servicios o productos a la cotización.")
 
         st.divider()
@@ -502,13 +699,22 @@ else:
                 cfg_pie = st.session_state.get("cfg_pie", "")
                 cfg_align = st.session_state.get("cfg_align", "Izquierda")
                 cfg_logo_path = st.session_state.get("cfg_logo_path", None)
+                cfg_banco = st.session_state.get("cfg_banco", "")
+                cfg_clabe = st.session_state.get("cfg_clabe", "")
+                cfg_titular = st.session_state.get("cfg_titular", "")
+                cfg_firma_path = st.session_state.get("cfg_firma_path", None)
+
+                # Generar QR para el pago SPEI si hay CLABE
+                texto_bancario = f"Banco: {cfg_banco}\nCLABE: {cfg_clabe}\nBeneficiario: {cfg_titular}" if cfg_clabe else ""
+                path_qr_pago = generar_qr_spei(cfg_clabe, cfg_titular) if (es_pro and cfg_clabe) else None
 
                 pdf_bytes = generar_pdf(
                     mi_empresa if mi_empresa.strip() else "Mi Empresa", 
                     mi_telefono, cliente_nombre, cliente_telefono, 
-                    df_items, total_cotizacion, vigencia_dias, notas_adicionales,
+                    df_items, subtotal_bruto, monto_descuento, monto_iva, total_final, vigencia_dias, notas_adicionales,
                     es_pro=es_pro, logo_path=cfg_logo_path,
-                    color_hex=cfg_color, pie_custom=cfg_pie, logo_align=cfg_align
+                    color_hex=cfg_color, pie_custom=cfg_pie, logo_align=cfg_align,
+                    datos_banco=texto_bancario, qr_path=path_qr_pago, firma_path=cfg_firma_path
                 )
                 
                 st.download_button(
@@ -519,12 +725,12 @@ else:
                     use_container_width=True
                 )
 
-                # WhatsApp
+                # WhatsApp con desglose estructurado
                 resumen_lineas = [f"• *{it['Concepto']}* ({it['Cantidad']:.0f} {it['Tipo']}) -> ${it['Importe']:,.2f}" for _, it in df_items.iterrows()]
                 mensaje_wa = (
                     f"Hola *{cliente_nombre.strip()}*, te comparto el resumen de tu cotización con *{mi_empresa or 'nosotros'}*:\n\n"
                     f"{chr(10).join(resumen_lineas)}\n\n"
-                    f"💰 *TOTAL:* ${total_cotizacion:,.2f} MXN\n⏳ *Vigencia:* {vigencia_dias} días.\n\n"
+                    f"💰 *TOTAL:* ${total_final:,.2f} MXN\n⏳ *Vigencia:* {vigencia_dias} días.\n\n"
                     f"Quedo a tu disposición si deseas confirmar o realizar algún ajuste."
                 )
                 tel_formateado = "".join(filter(str.isdigit, cliente_telefono))
@@ -532,11 +738,11 @@ else:
                 st.link_button("📲 Enviar Resumen por WhatsApp", wa_url, use_container_width=True)
 
                 # Google Calendar
-                cal_desc = f"Seguimiento de cotización enviada por ${total_cotizacion:,.2f} MXN. Tel: {cliente_telefono}"
+                cal_desc = f"Seguimiento de cotización enviada por ${total_final:,.2f} MXN. Tel: {cliente_telefono}"
                 cal_url = link_google_calendar(f"Llamar a {cliente_nombre} (Seguimiento Cotización)", cal_desc, fecha_seg)
                 st.link_button("📅 Agendar en Google Calendar", cal_url, use_container_width=True)
 
-                # Guardado
+                # Guardado en Google Sheets
                 if st.button("💾 Guardar en mi Historial", use_container_width=True):
                     folio = f"COT-{datetime.datetime.now().strftime('%y%m%d%H%M')}"
                     datos_a_guardar = {
@@ -545,7 +751,10 @@ else:
                         "Fecha": datetime.date.today().strftime("%Y-%m-%d"),
                         "Cliente": cliente_nombre.strip(),
                         "Telefono": cliente_telefono.strip(),
-                        "Total": total_cotizacion,
+                        "Subtotal": subtotal_bruto,
+                        "Descuento": monto_descuento,
+                        "IVA": monto_iva,
+                        "Total": total_final,
                         "Conceptos": " | ".join([f"{it['Concepto']} ({it['Cantidad']})" for _, it in df_items.iterrows()]),
                         "Vigencia_Dias": vigencia_dias,
                         "Fecha_Seguimiento": fecha_seg.strftime("%Y-%m-%d"),
@@ -560,10 +769,60 @@ else:
             else:
                 st.caption("Ingresa el nombre del cliente y al menos un concepto para habilitar la descarga del PDF y WhatsApp.")
 
-    # --- PANTALLA 2: PERSONALIZADOR DE HOJA MEMBRETADA ---
+    # --- PANTALLA 2: MI CATÁLOGO ILIMITADO (PRO) ---
+    elif menu == "📦 Mi Catálogo Ilimitado":
+        st.title("📦 Catálogo de Productos y Servicios Ilimitado")
+        st.caption("Guarda todos tus paquetes y productos frecuentes para autocompletar cotizaciones en segundos.")
+
+        if not es_pro:
+            st.warning(f"🔒 El catálogo guardado está disponible en el **Plan Pro** y durante los **{DIAS_PRUEBA_GRATIS} días de prueba gratis**.")
+            st.stop()
+
+        tab_ver_cat, tab_nuevo_cat = st.tabs(["📋 Mis Paquetes Guardados", "➕ Guardar Nuevo Producto / Servicio"])
+
+        with tab_nuevo_cat:
+            with st.form("form_nuevo_cat", clear_on_submit=True):
+                col_cat1, col_cat2, col_cat3 = st.columns([2, 1, 1])
+                with col_cat1:
+                    cat_nombre = st.text_input("Nombre del Paquete o Producto", placeholder="Ej. Paquete Fotografía Boda VIP")
+                with col_cat2:
+                    cat_tipo = st.selectbox("Categoría", ["Servicio", "Producto"])
+                with col_cat3:
+                    cat_unidad = st.selectbox("Presentación / Unidad", ["Servicio", "Proyecto", "Hora", "Mes", "Pieza", "Paquete", "Kit", "Lote"])
+                
+                cat_precio = st.number_input("Precio Base Sugerido ($ MXN)", min_value=0.0, step=100.0)
+                cat_detalle = st.text_area("¿Qué incluye este paquete? (Detalle / Alcance)", placeholder="Ej. Cobertura de 8 horas, 2 fotógrafos, galería web y cuadro 60x40cm.")
+                
+                if st.form_submit_button("💾 Guardar en mi Catálogo Ilimitado", use_container_width=True):
+                    if cat_nombre.strip():
+                        ok = guardar_item_catalogo_api(user_email, cat_tipo, cat_nombre.strip(), cat_unidad, float(cat_precio), cat_detalle.strip())
+                        if ok:
+                            st.success(f"✅ '{cat_nombre.strip()}' guardado con éxito.")
+                            st.rerun()
+                        else:
+                            st.error("Error al conectar con la base de datos.")
+                    else:
+                        st.warning("Escribe el nombre del ítem.")
+
+        with tab_ver_cat:
+            if not df_mi_catalogo.empty:
+                st.dataframe(df_mi_catalogo[["Tipo", "Nombre", "Unidad", "Precio", "Detalle"]], use_container_width=True, hide_index=True)
+                
+                st.write("---")
+                st.subheader("🗑️ Eliminar un Ítem del Catálogo")
+                item_a_borrar = st.selectbox("Selecciona el ítem que deseas eliminar:", ["-- Seleccionar --"] + df_mi_catalogo["Nombre"].tolist())
+                if item_a_borrar != "-- Seleccionar --":
+                    if st.button(f"Eliminar '{item_a_borrar}'", type="primary"):
+                        eliminar_item_catalogo_api(user_email, item_a_borrar)
+                        st.success("Ítem eliminado.")
+                        st.rerun()
+            else:
+                st.info("Aún no has registrado productos ni servicios en tu catálogo. Guarda tu primer paquete en la pestaña contigua.")
+
+    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA ---
     elif menu == "🎨 Diseñar Hoja Membretada":
-        st.title("🎨 Personaliza tu Hoja Membretada y PDF")
-        st.caption(f"Configura la identidad visual de tu marca. Disponible en Plan Pro y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
+        st.title("🎨 Personaliza tu Hoja Membretada, Cobro y Firma")
+        st.caption(f"Disponible en Plan Pro y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
 
         if not es_pro:
             st.warning(f"🔒 Esta sección está disponible en el **Plan Pro** y durante los **{DIAS_PRUEBA_GRATIS} días de prueba gratis**.")
@@ -571,7 +830,7 @@ else:
         col_d1, col_d2 = st.columns(2)
 
         with col_d1:
-            st.subheader("1. Identidad de Marca")
+            st.subheader("1. Identidad de Marca y Logo")
             paletas = {
                 "Azul Ejecutivo": "#1e3a8a",
                 "Verde Esmeralda / Bosque": "#065f46",
@@ -580,109 +839,132 @@ else:
                 "Dorado Elegante": "#b45309",
                 "Personalizado": "#1e293b"
             }
-            eleccion_paleta = st.selectbox("Paleta de Color Principal", list(paletas.keys()))
-            if eleccion_paleta == "Personalizado":
-                color_seleccionado = st.color_picker("Elige tu color hexadecimal", value="#1e293b")
-            else:
-                color_seleccionado = paletas[eleccion_paleta]
-            
+            eleccion_paleta = st.selectbox("Color Principal", list(paletas.keys()))
+            color_seleccionado = st.color_picker("Color hexadecimal", value="#1e293b") if eleccion_paleta == "Personalizado" else paletas[eleccion_paleta]
             st.session_state["cfg_color"] = color_seleccionado
 
-            st.write("---")
-            st.subheader("2. Logotipo Oficial")
-            logo_subido = st.file_uploader("Subir Logo (PNG sin fondo recomendado)", type=["png", "jpg", "jpeg"])
+            logo_subido = st.file_uploader("Subir Logo (PNG/JPG)", type=["png", "jpg", "jpeg"])
             if logo_subido:
                 temp_dir = tempfile.gettempdir()
                 path_logo = os.path.join(temp_dir, f"logo_{user_email.replace('@','_')}.png")
                 with open(path_logo, "wb") as f:
                     f.write(logo_subido.getbuffer())
                 st.session_state["cfg_logo_path"] = path_logo
-                st.success("✅ Logotipo cargado correctamente.")
+                st.success("✅ Logotipo cargado.")
             
-            pos_logo = st.radio("Alineación del Logotipo", ["Izquierda", "Derecha"], horizontal=True)
-            st.session_state["cfg_align"] = pos_logo
+            st.session_state["cfg_align"] = st.radio("Alineación del Logotipo", ["Izquierda", "Derecha"], horizontal=True)
+
+            st.write("---")
+            st.subheader("2. Firma / Sello Escaneado (Opcional)")
+            firma_subida = st.file_uploader("Subir Firma Digital / Sello", type=["png", "jpg", "jpeg"], key="firma_up")
+            if firma_subida:
+                temp_dir = tempfile.gettempdir()
+                path_firma = os.path.join(temp_dir, f"firma_{user_email.replace('@','_')}.png")
+                with open(path_firma, "wb") as f:
+                    f.write(firma_subida.getbuffer())
+                st.session_state["cfg_firma_path"] = path_firma
+                st.success("✅ Firma/Sello cargado.")
 
         with col_d2:
-            st.subheader("3. Pie de Página y Textos Legales")
+            st.subheader("3. Datos de Cobro Bancario (SPEI y QR)")
+            banco_in = st.text_input("Banco Receptor", value=st.session_state.get("cfg_banco", "BBVA / Banamex / Santander"))
+            clabe_in = st.text_input("CLABE Interbancaria (18 dígitos)", value=st.session_state.get("cfg_clabe", ""))
+            titular_in = st.text_input("Nombre del Beneficiario / Titular", value=st.session_state.get("cfg_titular", empresa_data.get('nombre', '')))
+            
+            st.session_state["cfg_banco"] = banco_in
+            st.session_state["cfg_clabe"] = clabe_in
+            st.session_state["cfg_titular"] = titular_in
+
+            st.write("---")
+            st.subheader("4. Pie de Página y Textos Legales")
             pie_texto = st.text_area(
-                "Texto personalizado al pie del documento", 
-                value=st.session_state.get("cfg_pie", "Gracias por su preferencia - Documento emitido para fines presupuestarios."),
-                placeholder="Ej. Precios sujetos a cambio sin previo aviso. / R.F.C. y Cuentas de Transferencia..."
+                "Texto personalizado al pie del PDF", 
+                value=st.session_state.get("cfg_pie", "Gracias por su preferencia - Precios sujetos a cambio sin previo aviso."),
+                key="pie_in"
             )
             st.session_state["cfg_pie"] = pie_texto
 
-            st.write("---")
-            st.subheader("👁️ Vista Previa de tu Hoja Membretada")
-            st.markdown(
-                f"""
-                <div style="border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; background-color: #ffffff; color: #1e293b;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid {color_seleccionado}; padding-bottom: 10px;">
-                        <div>
-                            <h3 style="margin: 0; color: {color_seleccionado};">{empresa_data.get('nombre', 'MI EMPRESA').upper()}</h3>
-                            <small style="color: #64748b;">Contacto: {empresa_data.get('telefono', '9811234567')}</small>
-                        </div>
-                        <span style="background-color: #f1f5f9; padding: 6px 12px; border-radius: 4px; font-weight: bold; color: {color_seleccionado};">COTIZACIÓN</span>
-                    </div>
-                    <div style="margin-top: 15px; font-size: 13px; color: #475569;">
-                        <b>Cliente:</b> Ejemplo de Cliente S.A.<br>
-                        <b>Detalle:</b> Servicios profesionales con tu paleta de color oficial.
-                    </div>
-                    <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 8px; text-align: center; font-size: 11px; color: #94a3b8;">
-                        {pie_texto}
-                    </div>
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
+        st.success("✅ Todos los ajustes de diseño y cobro han sido guardados para tus próximas cotizaciones.")
 
-        st.success("✅ Cambios de diseño guardados para tus próximas cotizaciones.")
-
-    # --- PANTALLA 3: HISTORIAL PRIVADO ---
-    elif menu == "📊 Mis Cotizaciones":
-        st.title(f"📊 Historial de Cotizaciones - {empresa_data.get('nombre', 'Mi Empresa')}")
+    # --- PANTALLA 4: HISTORIAL Y MINI-CRM ---
+    elif menu == "📊 Mis Cotizaciones & CRM":
+        st.title(f"📊 Control Comercial y CRM - {empresa_data.get('nombre', 'Mi Empresa')}")
         
         if not df_mis_cotizaciones.empty:
-            col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-            with col_kpi1:
-                total_sum = pd.to_numeric(df_mis_cotizaciones['Total'], errors='coerce').sum()
-                st.metric("Total Cotizado", f"${total_sum:,.2f} MXN")
-            with col_kpi2:
-                st.metric("Cotizaciones Totales", len(df_mis_cotizaciones))
-            with col_kpi3:
-                pendientes = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"] == "Pendiente"])
-                st.metric("Cotizaciones Pendientes", pendientes)
+            total_sum = pd.to_numeric(df_mis_cotizaciones['Total'], errors='coerce').sum()
+            pendientes = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"] == "Pendiente"])
+            aprobadas = len(df_mis_cotizaciones[df_mis_cotizaciones["Estatus"].isin(["Aprobada", "Cobrada"])])
 
-            st.subheader("Listado de Cotizaciones")
-            cols_mostrar = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
-            st.dataframe(df_mis_cotizaciones[cols_mostrar], use_container_width=True, hide_index=True)
+            col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+            with col_k1:
+                st.metric("Total Cotizado", f"${total_sum:,.2f} MXN")
+            with col_k2:
+                st.metric("Cotizaciones Totales", len(df_mis_cotizaciones))
+            with col_k3:
+                st.metric("Pendientes de Cierre", pendientes)
+            with col_k4:
+                st.metric("Ventas Ganadas", aprobadas)
+
+            st.write("---")
+            st.subheader("🔄 Cambiar Estatus de Cotización en Tiempo Real")
+            col_crm1, col_crm2, col_crm3 = st.columns([2, 2, 1])
+            with col_crm1:
+                folio_sel = st.selectbox("Selecciona el Folio a actualizar:", df_mis_cotizaciones["Folio"].tolist())
+            with col_crm2:
+                nuevo_estatus = st.selectbox("Nuevo Estatus:", ["Pendiente", "Aprobada", "Cobrada", "Rechazada"])
+            with col_crm3:
+                st.write("")
+                st.write("")
+                if st.button("Actualizar Estatus", use_container_width=True):
+                    ok = actualizar_estatus_api(folio_sel, user_email, nuevo_estatus)
+                    if ok:
+                        st.success("¡Estatus actualizado!")
+                        st.rerun()
+
+            st.write("---")
+            st.subheader("📋 Registro Completo")
+            cols_crm = ["Folio", "Fecha", "Cliente", "Telefono", "Total", "Conceptos", "Fecha_Seguimiento", "Estatus"]
+            st.dataframe(df_mis_cotizaciones[cols_crm], use_container_width=True, hide_index=True)
+
+            # Exportación a CSV / Excel
+            csv_data = df_mis_cotizaciones.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Exportar Historial a Excel (CSV)",
+                data=csv_data,
+                file_name=f"Reporte_Ventas_{user_email}.csv",
+                mime="text/csv"
+            )
         else:
             st.info("Aún no tienes cotizaciones guardadas en tu cuenta.")
 
-    # --- PANTALLA 4: PLAN PRO ---
+    # --- PANTALLA 5: PLAN PRO ---
     elif menu == "⭐ Plan Pro":
         st.title("⭐ Potencia tu Negocio con el Plan Pro")
-        st.write("Elimina límites y proyecta una imagen 100% corporativa ante tus clientes.")
+        st.write("Herramientas comerciales avanzadas para vender más rápido y profesionalizar tu empresa.")
         
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             st.markdown(f"""
             ### 🟢 Plan Free (Después de {DIAS_PRUEBA_GRATIS} días)
             - Hasta **{LIMITE_FREE_MENSUAL} cotizaciones al mes**
-            - Marca de agua genérica en PDF
-            - Soporte estándar
+            - Marca de agua estándar en PDF
+            - Captura manual de productos
+            - Sin datos bancarios ni QR
             """)
         with col_c2:
             st.markdown("""
             ### ⭐ Plan Pro ($149 MXN / mes)
             - **Cotizaciones Ilimitadas**
-            - **Hoja Membretada Personalizada** con Colores y Logotipo
-            - **Textos Legales y Pie de Página propio**
+            - **Catálogo Ilimitado** para cotizar en 1 clic
+            - **Hoja Membretada con Colores y Logotipo oficial**
+            - **Datos Bancarios + QR SPEI de pago** directo
+            - **Firma digital / Sello escaneado**
+            - **Calculadora de IVA y Descuentos comerciales**
+            - **Pipeline CRM con cambio de estatus** y exportación a Excel
             - **Sin marcas de agua**
-            - Agendado de seguimiento en Google Calendar
-            - Historial en la nube
             """)
 
         st.divider()
-        st.info("💡 Para activar tu suscripción Pro permanente, contáctanos directamente.")
+        st.info("💡 Para activar tu membresía Pro permanente, contáctanos vía WhatsApp.")
         wa_upgrade = f"https://wa.me/529817360428?text=Hola,%20quiero%20activar%20mi%20suscripción%20Pro%20en%20Cotizador%20PyME%20para%20la%20cuenta%20{user_email}"
         st.link_button("📲 Activar Plan Pro por WhatsApp", wa_upgrade, use_container_width=True)
