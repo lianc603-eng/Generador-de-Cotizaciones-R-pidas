@@ -19,6 +19,7 @@ COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Impo
 LIMITE_FREE_MENSUAL = 3
 DIAS_PRUEBA_GRATIS = 3
 MAX_NEGOCIOS_PRO = 3
+PRECIO_PRO_MENSUAL = 199
 
 LISTA_BANCOS_MX = [
     "ACTINVER", "AFIRME", "albo", "ARCUS FI", "ASP INTEGRA OPC", "AZTECA", "BaBien", 
@@ -521,13 +522,13 @@ else:
 
     if plan_raw in ["PRO", "MULTI", "PRO_MULTI"]:
         es_pro = True
-        estado_plan_texto = f"⭐ Plan PRO ($220/mes - Hasta {MAX_NEGOCIOS_PRO} Negocios)"
+        estado_plan_texto = "⭐ Plan PRO"
     elif plan_raw == "TRIAL" and dias_restantes_trial > 0:
         es_pro = True
         estado_plan_texto = f"🎁 Prueba Pro ({dias_restantes_trial} días restantes)"
     else:
         es_pro = False
-        estado_plan_texto = "🏷️ Plan FREE (1 Negocio)"
+        estado_plan_texto = "🏷️ Plan FREE"
 
     # Cargar lista de negocios del usuario
     df_mis_negocios = obtener_negocios_usuario(user_email)
@@ -828,7 +829,7 @@ else:
     # --- PANTALLA 2: ADMINISTRAR MIS NEGOCIOS (HASTA 3 EN PRO) ---
     elif menu == "🏢 Mis Negocios (Hasta 3)":
         st.title("🏢 Gestión de Mis Marcas y Negocios")
-        st.caption(f"El **Plan Pro ($220 MXN/mes)** te permite operar hasta **{MAX_NEGOCIOS_PRO} marcas o negocios independientes** bajo la misma cuenta.")
+        st.caption(f"El **Plan Pro (${PRECIO_PRO_MENSUAL} MXN/mes)** te permite operar hasta **{MAX_NEGOCIOS_PRO} marcas o negocios independientes** bajo la misma cuenta.")
 
         if not es_pro:
             st.warning(f"🔒 La gestión de múltiples marcas está disponible en el **Plan Pro** y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
@@ -1096,7 +1097,7 @@ else:
         with col_p2:
             st.markdown(f"""
             ### ⭐ Plan Pro
-            **$220 MXN / mes** *(Completo)*
+            **${PRECIO_PRO_MENSUAL} MXN / mes** *(Completo)*
             - **Hasta {MAX_NEGOCIOS_PRO} Negocios / Marcas independientes**
             - **Cotizaciones Ilimitadas** en todas tus marcas
             - **Catálogo Ilimitado** aislado por cada negocio
@@ -1110,5 +1111,5 @@ else:
 
         st.divider()
         st.info("💡 Para activar tu suscripción Pro permanente, contáctanos directamente vía WhatsApp.")
-        wa_upgrade = f"https://wa.me/529817360428?text=Hola,%20quiero%20activar%20mi%20Plan%20Pro%20($220/mes)%20en%20Cotizador%20PyME%20para%20la%20cuenta%20{user_email}"
+        wa_upgrade = f"https://wa.me/529817360428?text=Hola,%20quiero%20activar%20mi%20Plan%20Pro%20(${PRECIO_PRO_MENSUAL}/mes)%20en%20Cotizador%20PyME%20para%20la%20cuenta%20{user_email}"
         st.link_button("📲 Solicitar Activación Pro por WhatsApp", wa_upgrade, use_container_width=True)
