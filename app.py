@@ -838,7 +838,7 @@ else:
             else:
                 st.info("Aún no has registrado productos ni servicios en tu catálogo. Guarda tu primer paquete en la pestaña contigua.")
 
-    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA CON VISTA PREVIA EN VIVO ---
+    # --- PANTALLA 3: PERSONALIZADOR DE HOJA MEMBRETADA CON VISTA PREVIA LIMPIA ---
     elif menu == "🎨 Diseñar Hoja Membretada":
         st.title("🎨 Personaliza tu Hoja Membretada, Cobro y Firma")
         st.caption(f"Disponible en Plan Pro y durante tus {DIAS_PRUEBA_GRATIS} días de prueba gratis.")
@@ -876,7 +876,6 @@ else:
             st.write("---")
             st.subheader("2. Datos de Cobro Bancario (SPEI y QR)")
             
-            # Selector de Bancos con autocompletado y búsqueda
             banco_actual = st.session_state.get("cfg_banco", "-- Seleccionar Banco / Institución --")
             idx_banco = LISTA_BANCOS_MX.index(banco_actual) if banco_actual in LISTA_BANCOS_MX else 0
             banco_in = st.selectbox("Banco Receptor (Escribe para buscar tu institución)", LISTA_BANCOS_MX, index=idx_banco)
@@ -907,65 +906,52 @@ else:
             st.session_state["cfg_pie"] = pie_texto
 
         with col_d2:
-            st.subheader("👁️ Vista Previa en Vivo de tu Hoja Membretada")
-            st.caption("Esta vista se actualiza en tiempo real con los colores, datos bancarios y textos que edites.")
+            st.subheader("👁️ Vista Previa de tu Hoja Membretada")
+            st.caption("Simulación visual de cómo se estructurará tu PDF oficial.")
 
-            # Formatear caja de banco para la vista previa
-            info_banco_preview = ""
-            if banco_in and banco_in != "-- Seleccionar Banco / Institución --" and clabe_in:
-                info_banco_preview = f"""
-                <div style="margin-top: 15px; padding: 10px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;">
-                    <div style="font-weight: bold; color: {color_seleccionado}; font-size: 11px; margin-bottom: 4px;">INFORMACIÓN DE PAGO / SPEI</div>
-                    <div style="font-size: 11px; color: #334155;"><b>Banco:</b> {banco_in}</div>
-                    <div style="font-size: 11px; color: #334155;"><b>CLABE:</b> {clabe_in}</div>
-                    <div style="font-size: 11px; color: #334155;"><b>Beneficiario:</b> {titular_in}</div>
-                </div>
-                """
+            # Contenedor con borde nativo
+            with st.container(border=True):
+                # Encabezado Membretado
+                col_hdr1, col_hdr2 = st.columns([3, 1])
+                with col_hdr1:
+                    st.markdown(f"<h3 style='color:{color_seleccionado}; margin-bottom:0;'>{empresa_data.get('nombre', 'MI EMPRESA').upper()}</h3>", unsafe_allow_html=True)
+                    st.caption(f"Contacto: {empresa_data.get('telefono', '9811234567')}")
+                with col_hdr2:
+                    st.markdown(f"<div style='text-align:right; font-weight:bold; color:{color_seleccionado}; border:1px solid #cbd5e1; padding:4px 8px; border-radius:4px; font-size:12px;'>COTIZACIÓN</div>", unsafe_allow_html=True)
+                
+                st.markdown(f"<div style='height:3px; background-color:{color_seleccionado}; margin-top:5px; margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
-            st.markdown(
-                f"""
-                <div style="border: 2px solid #e2e8f0; border-radius: 10px; padding: 22px; background-color: #ffffff; color: #1e293b; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid {color_seleccionado}; padding-bottom: 12px;">
-                        <div>
-                            <h2 style="margin: 0; color: {color_seleccionado}; font-size: 20px;">{empresa_data.get('nombre', 'MI EMPRESA').upper()}</h2>
-                            <small style="color: #64748b; font-size: 12px;">Contacto: {empresa_data.get('telefono', '9811234567')}</small>
-                        </div>
-                        <div style="background-color: #f1f5f9; padding: 6px 14px; border-radius: 5px; font-weight: bold; color: {color_seleccionado}; font-size: 13px; border: 1px solid #cbd5e1;">COTIZACIÓN</div>
-                    </div>
-                    
-                    <div style="margin-top: 15px; font-size: 12px; color: #475569; display: flex; justify-content: space-between;">
-                        <div><b>CLIENTE:</b> Ejemplo de Cliente S.A.<br><span style="color: #64748b;">Tel: 9811000000</span></div>
-                        <div style="text-align: right;"><b>Fecha:</b> {datetime.date.today().strftime('%d/%m/%Y')}<br><span style="color: #64748b;">Válido por: 7 días</span></div>
-                    </div>
+                # Datos del Cliente
+                col_c_info1, col_c_info2 = st.columns(2)
+                with col_c_info1:
+                    st.markdown("**CLIENTE:** Ejemplo de Cliente S.A.")
+                    st.caption("Tel: 9811000000")
+                with col_c_info2:
+                    st.markdown(f"**Fecha:** {datetime.date.today().strftime('%d/%m/%Y')}")
+                    st.caption("Vigencia: 7 días")
 
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 12px;">
-                        <tr style="background-color: #f1f5f9; color: {color_seleccionado}; font-weight: bold; border-bottom: 1px solid #cbd5e1;">
-                            <th style="padding: 6px; text-align: left;">Descripción</th>
-                            <th style="padding: 6px; text-align: center;">Cant.</th>
-                            <th style="padding: 6px; text-align: right;">P. Unitario</th>
-                            <th style="padding: 6px; text-align: right;">Subtotal</th>
-                        </tr>
-                        <tr style="border-bottom: 1px solid #f1f5f9;">
-                            <td style="padding: 6px;">Servicios profesionales membretados</td>
-                            <td style="padding: 6px; text-align: center;">1.00</td>
-                            <td style="padding: 6px; text-align: right;">$3,500.00</td>
-                            <td style="padding: 6px; text-align: right;">$3,500.00</td>
-                        </tr>
-                    </table>
+                st.write("")
+                
+                # Tabla Demo
+                df_demo = pd.DataFrame([
+                    {"Descripción": "Servicio de Cobertura / Producción", "Cant.": "1.00", "P. Unitario": "$3,500.00", "Subtotal": "$3,500.00"},
+                    {"Descripción": "Impresión en Cuadro Fotográfico Canvas", "Cant.": "2.00", "P. Unitario": "$600.00", "Subtotal": "$1,200.00"}
+                ])
+                st.dataframe(df_demo, use_container_width=True, hide_index=True)
 
-                    <div style="margin-top: 10px; text-align: right; font-size: 13px; font-weight: bold; color: {color_seleccionado}; padding-top: 6px; border-top: 2px solid #f1f5f9;">
-                        TOTAL A LIQUIDAR: $3,500.00 MXN
-                    </div>
+                # Total
+                st.markdown(f"<div style='text-align:right; font-size:16px; font-weight:bold; color:{color_seleccionado}; margin-top:8px;'>TOTAL A LIQUIDAR: $4,700.00 MXN</div>", unsafe_allow_html=True)
 
-                    {info_banco_preview}
+                # Cuadro de Pago SPEI si hay datos
+                if banco_in and banco_in != "-- Seleccionar Banco / Institución --" and clabe_in:
+                    st.write("")
+                    with st.container(border=True):
+                        st.markdown(f"<div style='font-size:11px; font-weight:bold; color:{color_seleccionado};'>INFORMACIÓN PARA PAGO / SPEI</div>", unsafe_allow_html=True)
+                        st.markdown(f"**Banco:** {banco_in}  \n**CLABE:** `{clabe_in}`  \n**Beneficiario:** {titular_in}")
 
-                    <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 8px; text-align: center; font-size: 11px; color: #94a3b8;">
-                        {pie_texto}
-                    </div>
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
+                st.write("---")
+                # Pie de Página
+                st.markdown(f"<div style='text-align:center; font-size:11px; color:#94a3b8;'>{pie_texto}</div>", unsafe_allow_html=True)
 
         st.success("✅ Todos los ajustes de diseño y cobro han sido guardados para tus próximas cotizaciones.")
 
