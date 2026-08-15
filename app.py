@@ -5,6 +5,7 @@ import datetime
 import urllib.parse
 import hashlib
 import requests
+import json
 
 # --- URL de Google Apps Script Webhook ---
 API_URL = "https://script.google.com/macros/s/AKfycbywyo3MzZpjpgx7W98nsjAsKHinQoi8RumnKUKikCqyRjqLyPmJybxevmRriF0PDrtWWw/exec"
@@ -17,10 +18,10 @@ COLUMNAS_BASE = ["Tipo", "Concepto", "Detalle", "Cantidad", "P. Unitario", "Impo
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-# --- Funciones de Conexión con Google Sheets ---
+# --- Funciones de Conexión Segura con Google Sheets ---
 def obtener_usuarios():
     try:
-        res = requests.get(f"{API_URL}?action=get_users", timeout=12, allow_redirects=True)
+        res = requests.get(f"{API_URL}?action=get_users", timeout=15, allow_redirects=True)
         data = res.json()
         if isinstance(data, list) and len(data) > 1:
             headers = [str(h).strip().lower() for h in data[0]]
@@ -39,14 +40,20 @@ def registrar_usuario_api(email, password_hashed, nombre_empresa, telefono):
             "telefono": telefono,
             "plan": "Free"
         }
-        res = requests.post(API_URL, json=payload, timeout=12, allow_redirects=True)
-        return res.json().get("status") == "success"
+        res = requests.post(
+            API_URL, 
+            data=json.dumps(payload), 
+            headers={"Content-Type": "text/plain;charset=utf-8"}, 
+            timeout=15, 
+            allow_redirects=True
+        )
+        return "success" in res.text
     except Exception:
         return False
 
 def obtener_cotizaciones():
     try:
-        res = requests.get(f"{API_URL}?action=get_cotizaciones", timeout=12, allow_redirects=True)
+        res = requests.get(f"{API_URL}?action=get_cotizaciones", timeout=15, allow_redirects=True)
         data = res.json()
         if isinstance(data, list) and len(data) > 1:
             headers = [str(h).strip() for h in data[0]]
@@ -58,8 +65,14 @@ def obtener_cotizaciones():
 def guardar_cotizacion_api(data_dict):
     try:
         data_dict["action"] = "save_cotizacion"
-        res = requests.post(API_URL, json=data_dict, timeout=12, allow_redirects=True)
-        return res.json().get("status") == "success"
+        res = requests.post(
+            API_URL, 
+            data=json.dumps(data_dict), 
+            headers={"Content-Type": "text/plain;charset=utf-8"}, 
+            timeout=15, 
+            allow_redirects=True
+        )
+        return "success" in res.text
     except Exception:
         return False
 
@@ -72,7 +85,7 @@ if "autenticado" not in st.session_state:
 if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
     st.session_state["items"] = []
 
-# --- Generación de PDF ---
+# --- Clase de Generación PDF ---
 class PDFCotizacion(FPDF):
     def __init__(self, emisor_nombre, emisor_tel):
         super().__init__()
@@ -278,7 +291,7 @@ else:
             st.session_state["items"] = []
             st.rerun()
 
-    # --- NUEVA COTIZACIÓN ---
+    # --- PANTALLA 1: NUEVA COTIZACIÓN ---
     if menu == "📝 Nueva Cotización":
         st.title("📄 Generar Cotización")
         
@@ -437,7 +450,7 @@ else:
             else:
                 st.caption("Ingresa el nombre del cliente y al menos un concepto para habilitar la descarga del PDF y WhatsApp.")
 
-    # --- HISTORIAL PRIVADO ---
+    # --- PANTALLA 2: HISTORIAL PRIVADO ---
     elif menu == "📊 Mis Cotizaciones":
         st.title(f"📊 Historial de Cotizaciones - {empresa_data.get('nombre', 'Mi Empresa')}")
         df_todas = obtener_cotizaciones()
