@@ -8,8 +8,8 @@ import urllib.parse
 st.set_page_config(page_title="Cotizador PyME Pro", page_icon="📄", layout="wide")
 
 # --- Inicialización de Estado ---
-if "items" not in st.session_state or not isinstance(st.session_state.items, list):
-    st.session_state.items = []
+if "items" not in st.session_state or not isinstance(st.session_state["items"], list):
+    st.session_state["items"] = []
 
 # --- Clase para Generación de PDF ---
 class PDFCotizacion(FPDF):
@@ -20,10 +20,10 @@ class PDFCotizacion(FPDF):
 
     def header(self):
         self.set_font("Helvetica", "B", 16)
-        self.cell(0, 8, self.emisor_nombre.upper(), ln=True, align="L")
+        self.cell(0, 8, self.emisor_nombre.upper(), new_x="LMARGIN", new_y="NEXT", align="L")
         self.set_font("Helvetica", "", 9)
         self.set_text_color(100, 100, 100)
-        self.cell(0, 5, f"Contacto: {self.emisor_tel}", ln=True, align="L")
+        self.cell(0, 5, f"Contacto: {self.emisor_tel}", new_x="LMARGIN", new_y="NEXT", align="L")
         self.set_text_color(0, 0, 0)
         self.ln(5)
         self.set_draw_color(200, 200, 200)
@@ -40,16 +40,16 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
     pdf = PDFCotizacion(empresa, emisor_tel)
     pdf.add_page()
     
-    # Encabezado del Documento
+    # Encabezado
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(100, 6, f"CLIENTE: {cliente}", ln=False)
+    pdf.cell(100, 6, f"CLIENTE: {cliente}")
     pdf.set_font("Helvetica", "", 10)
-    pdf.cell(90, 6, f"Fecha: {datetime.date.today().strftime('%d/%m/%Y')}", ln=True, align="R")
-    pdf.cell(100, 6, f"Tel: {cliente_tel}", ln=False)
-    pdf.cell(90, 6, f"Válido por: {vigencia} días", ln=True, align="R")
+    pdf.cell(90, 6, f"Fecha: {datetime.date.today().strftime('%d/%m/%Y')}", new_x="LMARGIN", new_y="NEXT", align="R")
+    pdf.cell(100, 6, f"Tel: {cliente_tel}")
+    pdf.cell(90, 6, f"Válido por: {vigencia} días", new_x="LMARGIN", new_y="NEXT", align="R")
     pdf.ln(6)
 
-    # Tabla de Productos
+    # Tabla
     pdf.set_fill_color(240, 240, 240)
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(100, 7, "Descripción", border=1, fill=True)
@@ -72,10 +72,10 @@ def generar_pdf(empresa, emisor_tel, cliente, cliente_tel, items_df, total, vige
     pdf.cell(35, 7, f"${total:,.2f}", border=1, align="R")
     pdf.ln(8)
 
-    # Notas / Términos
+    # Notas
     if notas:
         pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(0, 5, "Notas y Condiciones:", ln=True)
+        pdf.cell(0, 5, "Notas y Condiciones:", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 8)
         pdf.multi_cell(0, 4, str(notas))
 
@@ -112,8 +112,8 @@ with col_c4:
     st.write("")
     st.write("")
     if st.button("➕ Agregar", use_container_width=True):
-        if concepto.strip():
-            st.session_state.items.append({
+        if concepto and concepto.strip():
+            st.session_state["items"].append({
                 "Concepto": concepto.strip(),
                 "Cantidad": float(cantidad),
                 "P. Unitario": float(precio),
@@ -121,21 +121,21 @@ with col_c4:
             })
             st.rerun()
 
-# --- Construcción Segura del DataFrame ---
-columnas_estandar = ["Concepto", "Cantidad", "P. Unitario", "Importe"]
+# --- Visualización de Datos ---
+lista_actual = st.session_state.get("items", [])
 
-if len(st.session_state.items) > 0:
-    df_items = pd.DataFrame(st.session_state.items)
+if isinstance(lista_actual, list) and len(lista_actual) > 0:
+    df_items = pd.DataFrame(lista_actual)
     st.dataframe(df_items, use_container_width=True, hide_index=True)
     
     total_cotizacion = float(df_items["Importe"].sum())
     st.metric(label="Total Cotización", value=f"${total_cotizacion:,.2f}")
 
     if st.button("🗑️ Limpiar lista de conceptos"):
-        st.session_state.items = []
+        st.session_state["items"] = []
         st.rerun()
 else:
-    df_items = pd.DataFrame(columns=columnas_estandar)
+    df_items = pd.DataFrame(columns=["Concepto", "Cantidad", "P. Unitario", "Importe"])
     total_cotizacion = 0.0
     st.info("Aún no has agregado productos o servicios a la cotización.")
 
@@ -150,7 +150,7 @@ with col_opt:
 
 with col_actions:
     st.subheader("Exportar y Notificar")
-    if not df_items.empty and cliente_nombre.strip():
+    if not df_items.empty and cliente_nombre and cliente_nombre.strip():
         pdf_bytes = generar_pdf(
             mi_empresa, mi_telefono, cliente_nombre, 
             cliente_telefono, df_items, total_cotizacion, 
@@ -161,14 +161,14 @@ with col_actions:
         st.download_button(
             label="📥 Descargar Cotización en PDF",
             data=pdf_bytes,
-            file_name=f"Cotizacion_{cliente_nombre.replace(' ', '_')}.pdf",
+            file_name=f"Cotizacion_{cliente_nombre.strip().replace(' ', '_')}.pdf",
             mime="application/pdf",
             use_container_width=True
         )
 
         # Enlace a WhatsApp
         mensaje_wa = (
-            f"Hola {cliente_nombre}, te comparto el resumen de tu cotización de *{mi_empresa}*:\n\n"
+            f"Hola {cliente_nombre.strip()}, te comparto el resumen de tu cotización de *{mi_empresa}*:\n\n"
             f"💰 *Total:* ${total_cotizacion:,.2f} MXN\n"
             f"⏳ *Vigencia:* {vigencia_dias} días.\n\n"
             f"Quedo a tu disposición para confirmar el pedido."
