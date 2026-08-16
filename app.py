@@ -486,6 +486,7 @@ else:
     user_email = str(st.session_state["usuario_actual"]).lower().strip()
     empresa_data = st.session_state["datos_empresa"]
     
+    # Verificación estricta de SuperAdmin
     es_super_admin = (user_email == ADMIN_EMAIL.lower())
     
     plan_raw = str(empresa_data.get("plan", "Trial")).strip().upper()
@@ -545,15 +546,19 @@ else:
             
         st.divider()
 
+        # Generación de menú: los clientes solo ven lo suyo; la herramienta de ventas es exclusiva del admin
         opciones_menu = [
             "📝 Nueva Cotización", 
             "🏢 Mis Negocios",
             "📦 Mi Catálogo por Marca",
             "🎨 Diseñar Hoja Membretada", 
-            "📊 Control CRM & Ganancias", 
-            "📢 Mensajes de Venta WhatsApp",
-            "⭐ Planes y Precios"
+            "📊 Control CRM & Ganancias"
         ]
+        
+        if es_super_admin:
+            opciones_menu.append("📢 Mensajes de Venta WhatsApp")
+
+        opciones_menu.append("⭐ Planes y Precios")
         
         menu = st.radio("Secciones", opciones_menu)
         st.divider()
@@ -709,7 +714,6 @@ else:
             
             subtotal_bruto = float(df_items["Importe"].sum())
 
-            # Calculadora de Descuentos e IVA con soporte de IVA INCLUIDO
             col_calc1, col_calc2, col_calc3 = st.columns(3)
             with col_calc1:
                 st.metric("Subtotal de Conceptos", f"${subtotal_bruto:,.2f} MXN")
@@ -730,7 +734,6 @@ else:
                 base_con_descuento = subtotal_bruto - monto_descuento
                 
                 if "IVA Incluido" in tipo_iva:
-                    # El total ya contiene el IVA
                     total_final = base_con_descuento
                     base_gravable = total_final / 1.16
                     monto_iva = total_final - base_gravable
@@ -802,10 +805,7 @@ else:
                     use_container_width=True
                 )
 
-                # Resumen de WhatsApp estructurado con especificación de IVA
                 resumen_lineas = [f"• *{it['Concepto']}* ({it['Cantidad']:.0f} {it['Tipo']}) -> ${it['Importe']:,.2f}" for _, it in df_items.iterrows()]
-                
-                # Desglose de impuesto para el mensaje
                 info_impuesto_msg = f" ({etiqueta_iva_wa})"
                 
                 mensaje_wa = (
@@ -850,7 +850,7 @@ else:
             else:
                 st.caption("Ingresa el nombre del cliente y al menos un concepto para habilitar la descarga del PDF y WhatsApp.")
 
-    # --- PANTALLA 2: MIS NEGOCIOS (ILIMITADO EN ADMIN) ---
+    # --- PANTALLA 2: MIS NEGOCIOS ---
     elif menu == "🏢 Mis Negocios":
         st.title("🏢 Gestión de Mis Marcas y Negocios")
         if es_super_admin:
@@ -1147,10 +1147,10 @@ else:
             else:
                 st.info("No hay registros en tu cuenta.")
 
-    # --- PANTALLA 6: MENSAJES DE VENTA WHATSAPP ---
+    # --- PANTALLA 6: MENSAJES DE VENTA WHATSAPP (EXCLUSIVO ADMIN MASTER) ---
     elif menu == "📢 Mensajes de Venta WhatsApp":
         st.title("📢 Enviar Mensaje de Venta por WhatsApp")
-        st.caption("Prospección directa: envía un mensaje personalizado a dueños de negocios con enlace directo a la plataforma.")
+        st.caption("Herramienta exclusiva de Administrador: prospección y cierre comercial directo con dueños de PyMEs.")
 
         col_v1, col_v2 = st.columns([1, 1.2])
 
